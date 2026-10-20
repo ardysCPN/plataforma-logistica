@@ -1,27 +1,39 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
+import { env } from './config/env';
 import { db } from './config/database';
 import { checkRedisConnection } from './config/redis';
+
+// Rutas de Módulos
+import { authRouter } from './modules/auth/auth.routes';
+import { kycRouter } from './modules/kyc/kyc.routes';
+import { orderRouter } from './modules/services/order.routes';
+import { biddingRouter } from './modules/bidding/bidding.routes';
+import { chatRouter } from './modules/chat/chat.routes';
+import { walletRouter } from './modules/wallet/wallet.routes';
 
 export const app = express();
 
 // Middlewares de Seguridad y Parsing
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
-  origin: '*', // Permite Expo Web y APK Móvil
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health Check Endpoint
+// Servidor de Archivos Estáticos para Comprobantes y KYC
+app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR)));
+
+// Endpoints Base y Health Check
 app.get('/health', async (_req: Request, res: Response) => {
   const dbStatus = await db.checkConnection();
   const redisStatus = await checkRedisConnection();
-
-  const isHealthy = dbStatus.connected; // PostGIS es obligatorio para operar
+  const isHealthy = dbStatus.connected;
 
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'OK' : 'DEGRADED',
@@ -33,7 +45,6 @@ app.get('/health', async (_req: Request, res: Response) => {
   });
 });
 
-// Ruta raíz informativa
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'Plataforma Logística API',
@@ -41,6 +52,14 @@ app.get('/', (_req: Request, res: Response) => {
     documentation: 'Especificación SDD en /agent.md',
   });
 });
+
+// Montaje de Rutas de la API
+app.use('/api/auth', authRouter);
+app.use('/api/kyc', kycRouter);
+app.use('/api/orders', orderRouter);
+app.use('/api/bids', biddingRouter);
+app.use('/api/chat', chatRouter);
+app.use('/api/wallet', walletRouter);
 
 // Manejador de 404
 app.use((_req: Request, res: Response) => {

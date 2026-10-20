@@ -2,10 +2,11 @@ import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { app } from './app';
 import { env } from './config/env';
+import { initSocketManager } from './sockets/socket.manager';
 
 export const httpServer = http.createServer(app);
 
-// Inicialización de Socket.io con CORS para clientes móviles y PWA
+// Inicialización de Socket.io con CORS
 export const io = new SocketIOServer(httpServer, {
   cors: {
     origin: '*',
@@ -15,13 +16,8 @@ export const io = new SocketIOServer(httpServer, {
   pingTimeout: 5000,
 });
 
-io.on('connection', (socket) => {
-  console.log(`🔌 Cliente conectado vía WebSocket: ${socket.id}`);
-
-  socket.on('disconnect', (reason) => {
-    console.log(`❌ Cliente desconectado (${socket.id}): ${reason}`);
-  });
-});
+// Inicializar Manejador de Sockets
+initSocketManager(io);
 
 if (process.env.NODE_ENV !== 'test') {
   httpServer.listen(env.PORT, () => {
