@@ -1,0 +1,13 @@
+node_modules
+*/node_modules
+*/*/node_modules
+.git
+.github
+.expo
+dist
+build
+coverage
+*.log
+.system_generated
+.tempmediaStorage
+.user_uploaded

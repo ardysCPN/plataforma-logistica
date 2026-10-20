@@ -2,6 +2,11 @@ import { io, Socket } from 'socket.io-client';
 import { Platform } from 'react-native';
 
 const getSocketUrl = () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:3001';
+    }
+  }
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
   }

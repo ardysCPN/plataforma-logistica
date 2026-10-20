@@ -3,6 +3,11 @@ import { Platform } from 'react-native';
 
 // En Android emulador localhost es 10.0.2.2; en web/dispositivo real se usa la IP de red o variable de entorno
 const getBaseUrl = () => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:3001';
+    }
+  }
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
   }
