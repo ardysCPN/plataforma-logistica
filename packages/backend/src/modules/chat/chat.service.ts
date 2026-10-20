@@ -34,7 +34,15 @@ export const chatService = {
       [input.orderId, senderId, input.messageType || 'TEXT', input.content, input.imageUrl || null]
     );
 
-    return res.rows[0];
+    const userRes = await db.query(`SELECT full_name as "fullName" FROM users WHERE id = $1`, [senderId]);
+    const senderName = userRes.rows[0]?.fullName || 'Usuario';
+    const recipientId = senderId === order.clientId ? order.courierId : order.clientId;
+
+    return {
+      ...res.rows[0],
+      senderName,
+      recipientId,
+    } as any;
   },
 
   async getChatHistory(orderId: string, userId: string): Promise<ChatMessage[]> {
@@ -61,6 +69,32 @@ export const chatService = {
        WHERE order_id = $1
        ORDER BY created_at ASC`,
       [orderId]
+    );
+
+    return res.rows;
+  },
+
+  async getUserChatConversations(userId: string): Promise<any[]> {
+    const res = await db.query(
+      `SELECT 
+        o.id as "orderId",
+        o.service_type as "serviceType",
+        o.status as "orderStatus",
+        o.origin_address as "originAddress",
+        o.destination_address as "destinationAddress",
+        o.created_at as "orderCreatedAt",
+        CASE WHEN o.client_id = $1 THEN COALESCE(uc.full_name, 'Conductor') ELSE COALESCE(ucl.full_name, 'Cliente') END as "counterpartName",
+        CASE WHEN o.client_id = $1 THEN COALESCE(uc.phone, '') ELSE COALESCE(ucl.phone, '') END as "counterpartPhone",
+        (SELECT content FROM chat_messages cm WHERE cm.order_id = o.id ORDER BY cm.created_at DESC LIMIT 1) as "lastMessage",
+        (SELECT created_at FROM chat_messages cm WHERE cm.order_id = o.id ORDER BY cm.created_at DESC LIMIT 1) as "lastMessageAt",
+        (SELECT COUNT(*)::int FROM chat_messages cm WHERE cm.order_id = o.id AND cm.sender_id != $1 AND cm.read_at IS NULL) as "unreadCount"
+      FROM service_orders o
+      LEFT JOIN users uc ON o.courier_id = uc.id
+      LEFT JOIN users ucl ON o.client_id = ucl.id
+      WHERE (o.client_id = $1 OR o.courier_id = $1)
+      ORDER BY COALESCE((SELECT created_at FROM chat_messages cm WHERE cm.order_id = o.id ORDER BY cm.created_at DESC LIMIT 1), o.created_at) DESC
+      LIMIT 30`,
+      [userId]
     );
 
     return res.rows;

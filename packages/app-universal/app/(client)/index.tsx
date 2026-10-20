@@ -6,9 +6,13 @@ import { Input } from '../../components/common/Input';
 import { AddressAutocomplete } from '../../components/common/AddressAutocomplete';
 import { Button } from '../../components/common/Button';
 import { ChatModal } from '../../components/chat/ChatModal';
+import { ChatsModal } from '../../components/chat/ChatsModal';
 import { SosButton } from '../../components/common/SosButton';
 import { RatingModal } from '../../components/common/RatingModal';
 import { HistoryModal } from '../../components/common/HistoryModal';
+import { PqrModal } from '../../components/common/PqrModal';
+import { AppDrawer } from '../../components/common/AppDrawer';
+import { NotificationBanner, BannerNotification } from '../../components/common/NotificationBanner';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -20,6 +24,7 @@ import {
   SOCKET_EVENTS,
   SocketBidReceivedPayload,
   SocketOrderAssignedPayload,
+  SocketOrderStatusChangePayload,
 } from '@plataforma/shared';
 
 interface StopItem {
@@ -52,14 +57,22 @@ export default function ClientHomeScreen() {
   const [incomingBids, setIncomingBids] = useState<SocketBidReceivedPayload[]>([]);
   const [courierLocation, setCourierLocation] = useState<{ latitude: number; longitude: number; bearing?: number } | null>(null);
   const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
+  const [assignedCourier, setAssignedCourier] = useState<any>(null);
 
   // Conductores cercanos en mapa (Estilo Uber / InDrive)
   const [nearbyCouriers, setNearbyCouriers] = useState<NearbyCourierMarker[]>([]);
 
-  // Modales
+  // Modales y Notificaciones
   const [chatVisible, setChatVisible] = useState(false);
+  const [chatsModalVisible, setChatsModalVisible] = useState(false);
+  const [selectedChatOrderId, setSelectedChatOrderId] = useState<string | null>(null);
+  const [selectedChatCounterpart, setSelectedChatCounterpart] = useState('Conductor');
   const [ratingVisible, setRatingVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [pqrModalVisible, setPqrModalVisible] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [activeNotification, setActiveNotification] = useState<BannerNotification | null>(null);
+  const [unreadChatsCount, setUnreadChatsCount] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -191,11 +204,63 @@ export default function ClientHomeScreen() {
 
     const handleBidReceived = (bid: SocketBidReceivedPayload) => {
       setIncomingBids((prev) => [bid, ...prev.filter((b) => b.courierId !== bid.courierId)]);
+      setActiveNotification({
+        id: `bid_${Date.now()}`,
+        type: 'BID',
+        title: '💰 ¡Nueva Oferta de Conductor!',
+        message: `${bid.courierName} ofrece $${bid.bidAmount?.toLocaleString()} COP (⭐ ${bid.courierRating?.toFixed(1) || '5.0'})`,
+      });
     };
 
     const handleAssigned = (payload: SocketOrderAssignedPayload) => {
-      setActiveOrder((prev) => (prev ? { ...prev, status: 'ACCEPTED', agreedPrice: payload.agreedPrice } : null));
+      setAssignedCourier(payload.courier);
+      setActiveOrder((prev) => (prev ? {
+        ...prev,
+        status: 'ACCEPTED',
+        agreedPrice: payload.agreedPrice,
+        courierId: payload.courier.id,
+      } : null));
       setIncomingBids([]);
+
+      setActiveNotification({
+        id: `assigned_${Date.now()}`,
+        type: 'STATUS',
+        title: '🎉 ¡Conductor Confirmado!',
+        message: `${payload.courier.fullName} se dirige al punto de recogida en su ${payload.courier.vehicleType} ${payload.courier.vehiclePlate || ''}.`,
+      });
+    };
+
+    const handleStatusChange = (data: SocketOrderStatusChangePayload) => {
+      if (activeOrder && activeOrder.id === data.orderId) {
+        setActiveOrder((prev) => (prev ? { ...prev, status: data.newStatus } : null));
+
+        let statusText = 'El estado de tu viaje ha cambiado.';
+        if (data.newStatus === 'ARRIVED_AT_ORIGIN') statusText = '📍 ¡El conductor ha llegado al punto de recogida!';
+        else if (data.newStatus === 'PICKED_UP') statusText = '📦 Tu paquete o pedido ha sido recogido por el conductor.';
+        else if (data.newStatus === 'IN_TRANSIT') statusText = '🚀 El conductor va en camino hacia la entrega final.';
+
+        setActiveNotification({
+          id: `status_${Date.now()}`,
+          type: 'STATUS',
+          title: '🛵 Actualización del Viaje',
+          message: statusText,
+        });
+      }
+    };
+
+    const handleChatReceive = (msg: any) => {
+      if (msg.senderId !== user?.id) {
+        setUnreadChatsCount((prev) => prev + 1);
+        if (!chatVisible) {
+          setActiveNotification({
+            id: `chat_${Date.now()}`,
+            type: 'CHAT',
+            title: `💬 Mensaje de ${msg.senderName || 'Conductor'}`,
+            message: msg.content,
+            onPress: () => setChatVisible(true),
+          });
+        }
+      }
     };
 
     const handleLocationFeed = (feed: { orderId: string; latitude: number; longitude: number; bearing?: number }) => {
@@ -211,6 +276,13 @@ export default function ClientHomeScreen() {
       setRatingVisible(true);
       setActiveOrder(null);
       setCourierLocation(null);
+      setAssignedCourier(null);
+      setActiveNotification({
+        id: `completed_${Date.now()}`,
+        type: 'STATUS',
+        title: '🏁 ¡Servicio Completado!',
+        message: 'Tu pedido ha llegado a su destino. ¡Gracias por usar la plataforma!',
+      });
     };
 
     const handleCancelled = (payload: { orderId: string }) => {
@@ -220,11 +292,14 @@ export default function ClientHomeScreen() {
         setActiveOrder(null);
         setIncomingBids([]);
         setCourierLocation(null);
+        setAssignedCourier(null);
       }
     };
 
     socket.on(SOCKET_EVENTS.BID_RECEIVED, handleBidReceived);
     socket.on(SOCKET_EVENTS.ORDER_ASSIGNED, handleAssigned);
+    socket.on(SOCKET_EVENTS.ORDER_STATUS_CHANGE, handleStatusChange);
+    socket.on(SOCKET_EVENTS.CHAT_RECEIVE, handleChatReceive);
     socket.on(SOCKET_EVENTS.LOCATION_CLIENT_FEED, handleLocationFeed);
     socket.on(SOCKET_EVENTS.ORDER_COMPLETED, handleCompleted);
     socket.on(SOCKET_EVENTS.ORDER_CANCELLED, handleCancelled);
@@ -232,6 +307,8 @@ export default function ClientHomeScreen() {
     return () => {
       socket.off(SOCKET_EVENTS.BID_RECEIVED, handleBidReceived);
       socket.off(SOCKET_EVENTS.ORDER_ASSIGNED, handleAssigned);
+      socket.off(SOCKET_EVENTS.ORDER_STATUS_CHANGE, handleStatusChange);
+      socket.off(SOCKET_EVENTS.CHAT_RECEIVE, handleChatReceive);
       socket.off(SOCKET_EVENTS.LOCATION_CLIENT_FEED, handleLocationFeed);
       socket.off(SOCKET_EVENTS.ORDER_COMPLETED, handleCompleted);
       socket.off(SOCKET_EVENTS.ORDER_CANCELLED, handleCancelled);
@@ -366,42 +443,48 @@ export default function ClientHomeScreen() {
 
   return (
     <View className="flex-1 bg-slate-50">
-      {/* Barra de Encabezado Superior con Saludo, Historial y Cerrar Sesión */}
-      <View className="bg-secondary px-5 py-3 pt-12 flex-row items-center justify-between shadow-md z-20">
-        <View>
-          <Text className="text-white font-black text-base tracking-tight">
-            ⚡ Plataforma Logística
-          </Text>
-          <Text className="text-xs text-slate-300">
-            Hola, {user?.fullName?.split(' ')[0] || 'Cliente'} 👋
-          </Text>
+      {/* Notificación Flotante Superior (Estilo Push / Celular) */}
+      <NotificationBanner
+        notification={activeNotification}
+        onDismiss={() => setActiveNotification(null)}
+      />
+
+      {/* Barra de Encabezado Superior Móvil Limpia con Menú Hamburguesa */}
+      <View className="bg-secondary px-4 py-3 pt-12 flex-row items-center justify-between shadow-md z-20">
+        <View className="flex-row items-center gap-3">
+          {/* Botón Hamburguesa ☰ con indicador de no leídos */}
+          <TouchableOpacity
+            onPress={() => setDrawerVisible(true)}
+            className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 items-center justify-center active:bg-white/20 relative"
+          >
+            <Text className="text-white text-lg font-bold">☰</Text>
+            {unreadChatsCount > 0 && (
+              <View className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary border-2 border-secondary" />
+            )}
+          </TouchableOpacity>
+
+          <View>
+            <Text className="text-white font-black text-base tracking-tight">
+              ⚡ DOMY
+            </Text>
+            <Text className="text-[11px] text-slate-300">
+              Hola, {user?.fullName?.split(' ')[0] || 'Cliente'} 👋
+            </Text>
+          </View>
         </View>
 
         <View className="flex-row items-center gap-2">
-          {/* Toggle Modo Oscuro / Noche (Feature 7) */}
+          {/* Botón de Captura de GPS */}
           <TouchableOpacity
-            onPress={() => setDarkMode(!darkMode)}
-            className={`px-2.5 py-1.5 rounded-full border flex-row items-center gap-1 ${
-              darkMode ? 'bg-amber-400/20 border-amber-400/50' : 'bg-white/10 border-white/20'
-            }`}
+            onPress={handleCaptureGps}
+            disabled={locatingGps}
+            className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3 py-1.5 rounded-full flex-row items-center gap-1.5 shadow-sm"
           >
-            <Text className="text-white font-semibold text-xs">
-              {darkMode ? '☀️ Día' : '🌙 Noche'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setHistoryVisible(true)}
-            className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full border border-white/20 flex-row items-center gap-1"
-          >
-            <Text className="text-white font-semibold text-xs">📜 Historial</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleLogout}
-            className="bg-red-500/20 hover:bg-red-500/30 px-3 py-1.5 rounded-full border border-red-500/30 flex-row items-center gap-1"
-          >
-            <Text className="text-red-300 font-semibold text-xs">🚪 Salir</Text>
+            {locatingGps ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text className="text-xs font-bold text-white">🎯 Mi Ubicación</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -519,27 +602,94 @@ export default function ClientHomeScreen() {
               </View>
             )}
 
-            {/* Botones de Acción si ya está asignado */}
+            {/* Tarjeta de Conductor Asignado y Progreso en Tiempo Real */}
             {activeOrder.status !== 'SEARCHING' && (
-              <View className="gap-2 mt-3">
-                <Button
-                  title="📲 Compartir Viaje en Vivo (WhatsApp)"
-                  variant="outline"
-                  onPress={handleShareLiveTrip}
-                  className="border-emerald-300 bg-emerald-50 text-emerald-800"
-                />
-                <Button
-                  title="💬 Abrir Chat con el Conductor"
-                  variant="secondary"
-                  onPress={() => setChatVisible(true)}
-                />
-                <Button
-                  title="❌ Cancelar Servicio"
-                  variant="outline"
-                  onPress={handleCancelOrder}
-                  loading={cancelling}
-                  className="border-rose-300 text-rose-600"
-                />
+              <View className="mt-3">
+                <View className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-3">
+                  <View className="flex-row items-center justify-between mb-3">
+                    <View className="flex-row items-center gap-3">
+                      <View className="w-12 h-12 rounded-full bg-secondary items-center justify-center">
+                        <Text className="text-xl">🛵</Text>
+                      </View>
+                      <View>
+                        <Text className="text-sm font-extrabold text-slate-900">
+                          {assignedCourier?.fullName || 'Conductor Asignado'}
+                        </Text>
+                        <Text className="text-xs text-slate-500">
+                          {assignedCourier?.vehicleType || 'MOTO'} • Placa: <Text className="font-bold text-slate-800">{assignedCourier?.vehiclePlate || 'N/A'}</Text>
+                        </Text>
+                        <Text className="text-xs text-amber-500 font-bold mt-0.5">
+                          ⭐ {assignedCourier?.ratingAvg?.toFixed(1) || '5.0'} Conductor Verificado
+                        </Text>
+                      </View>
+                    </View>
+
+                    {assignedCourier?.phone ? (
+                      <TouchableOpacity
+                        onPress={() => Linking.openURL(`tel:${assignedCourier.phone}`).catch(() => {})}
+                        className="w-10 h-10 rounded-full bg-emerald-100 items-center justify-center border border-emerald-300 active:bg-emerald-200"
+                      >
+                        <Text className="text-lg">📞</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  {/* Pasos de Progreso Visual */}
+                  <View className="pt-2 border-t border-slate-200">
+                    <Text className="text-xs font-bold text-slate-700 mb-2">Estado del Servicio:</Text>
+                    <View className="flex-row items-center justify-between">
+                      <View className="items-center flex-1">
+                        <View className={`w-6 h-6 rounded-full items-center justify-center ${activeOrder.status === 'ACCEPTED' || activeOrder.status === 'ARRIVED_AT_ORIGIN' || activeOrder.status === 'PICKED_UP' || activeOrder.status === 'IN_TRANSIT' ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                          <Text className="text-white text-[10px] font-bold">✓</Text>
+                        </View>
+                        <Text className="text-[10px] text-center font-bold text-slate-700 mt-1">Asignado</Text>
+                      </View>
+
+                      <View className={`h-1 flex-1 ${activeOrder.status === 'ARRIVED_AT_ORIGIN' || activeOrder.status === 'PICKED_UP' || activeOrder.status === 'IN_TRANSIT' ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+
+                      <View className="items-center flex-1">
+                        <View className={`w-6 h-6 rounded-full items-center justify-center ${activeOrder.status === 'ARRIVED_AT_ORIGIN' || activeOrder.status === 'PICKED_UP' || activeOrder.status === 'IN_TRANSIT' ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                          <Text className="text-white text-[10px] font-bold">2</Text>
+                        </View>
+                        <Text className="text-[10px] text-center font-bold text-slate-700 mt-1">En Origen</Text>
+                      </View>
+
+                      <View className={`h-1 flex-1 ${activeOrder.status === 'PICKED_UP' || activeOrder.status === 'IN_TRANSIT' ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+
+                      <View className="items-center flex-1">
+                        <View className={`w-6 h-6 rounded-full items-center justify-center ${activeOrder.status === 'PICKED_UP' || activeOrder.status === 'IN_TRANSIT' ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                          <Text className="text-white text-[10px] font-bold">3</Text>
+                        </View>
+                        <Text className="text-[10px] text-center font-bold text-slate-700 mt-1">En Ruta</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                <View className="gap-2">
+                  <Button
+                    title="💬 Abrir Chat con el Conductor"
+                    variant="primary"
+                    onPress={() => {
+                      setSelectedChatOrderId(activeOrder.id);
+                      setSelectedChatCounterpart(assignedCourier?.fullName || 'Conductor');
+                      setChatVisible(true);
+                    }}
+                  />
+                  <Button
+                    title="📲 Compartir Viaje en Vivo (WhatsApp)"
+                    variant="outline"
+                    onPress={handleShareLiveTrip}
+                    className="border-emerald-300 bg-emerald-50 text-emerald-800"
+                  />
+                  <Button
+                    title="❌ Cancelar Servicio"
+                    variant="outline"
+                    onPress={handleCancelOrder}
+                    loading={cancelling}
+                    className="border-rose-300 text-rose-600"
+                  />
+                </View>
               </View>
             )}
           </View>
@@ -718,15 +868,44 @@ export default function ClientHomeScreen() {
       </ScrollView>
 
       {/* Modales Auxiliares */}
-      {activeOrder && (
+      {chatVisible && (selectedChatOrderId || activeOrder?.id) && (
         <ChatModal
           visible={chatVisible}
-          orderId={activeOrder.id}
+          orderId={selectedChatOrderId || activeOrder?.id || ''}
           currentUserId={user?.id || ''}
-          counterpartName="Conductor Asignado"
-          onClose={() => setChatVisible(false)}
+          counterpartName={selectedChatCounterpart || 'Conductor Asignado'}
+          onClose={() => {
+            setChatVisible(false);
+            setSelectedChatOrderId(null);
+          }}
         />
       )}
+
+      {/* Bandeja de Todos los Chats (Activos y Pasados) */}
+      <ChatsModal
+        visible={chatsModalVisible}
+        onClose={() => setChatsModalVisible(false)}
+        onSelectChat={(orderId, counterpart) => {
+          setSelectedChatOrderId(orderId);
+          setSelectedChatCounterpart(counterpart);
+          setChatVisible(true);
+        }}
+      />
+
+      {/* Menú Lateral Hamburguesa Móvil */}
+      <AppDrawer
+        visible={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+        user={user}
+        isCourier={false}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode(!darkMode)}
+        onOpenChats={() => setChatsModalVisible(true)}
+        onOpenHistory={() => setHistoryVisible(true)}
+        onOpenPqr={() => setPqrModalVisible(true)}
+        onLogout={handleLogout}
+        unreadChatsCount={unreadChatsCount}
+      />
 
       <RatingModal
         visible={ratingVisible}
@@ -739,6 +918,13 @@ export default function ClientHomeScreen() {
         visible={historyVisible}
         onClose={() => setHistoryVisible(false)}
         isCourier={false}
+      />
+
+      <PqrModal
+        visible={pqrModalVisible}
+        orderId={activeOrder?.id || ''}
+        isCourier={false}
+        onClose={() => setPqrModalVisible(false)}
       />
     </View>
   );

@@ -6,6 +6,7 @@ import { api } from '../../services/api';
 interface PqrModalProps {
   visible: boolean;
   orderId: string;
+  isCourier?: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }

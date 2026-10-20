@@ -91,7 +91,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     routeCoordinates,
   ]);
 
-  // Asegurar que la hoja de estilos de MapLibre esté presente en el navegador
+  // Asegurar que la hoja de estilos de MapLibre esté presente en el navegador y estilo para modo oscuro
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const linkId = 'maplibre-gl-css';
@@ -101,6 +101,18 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         link.rel = 'stylesheet';
         link.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
         document.head.appendChild(link);
+      }
+
+      const darkStyleId = 'maplibre-dark-mode-style';
+      if (!document.getElementById(darkStyleId)) {
+        const style = document.createElement('style');
+        style.id = darkStyleId;
+        style.textContent = `
+          .dark-map-mode .maplibregl-canvas {
+            filter: invert(90%) hue-rotate(180deg) brightness(85%) contrast(115%) !important;
+          }
+        `;
+        document.head.appendChild(style);
       }
     }
   }, []);
@@ -115,17 +127,12 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
       try {
         const maplibregl = (await import('maplibre-gl')).default;
 
-        const tiles = darkMode
-          ? [
-              'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-            ]
-          : [
-              'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            ];
+        // Teselas OpenStreetMap 100% libres y sin necesidad de API keys
+        const tiles = [
+          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        ];
 
         if (!mapInstanceRef.current && mapContainerRef.current) {
           const map = new maplibregl.Map({
@@ -180,31 +187,6 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     };
   }, [center.latitude, center.longitude, zoom]);
 
-  // Actualizar teselas dinámicamente si cambia darkMode
-  useEffect(() => {
-    if (!mapInstanceRef.current || !mapLoaded) return;
-    const map = mapInstanceRef.current;
-    const tiles = darkMode
-      ? [
-          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-          'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        ]
-      : [
-          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        ];
-
-    try {
-      const source = map.getSource('osm-raster-tiles');
-      if (source && typeof source.setTiles === 'function') {
-        source.setTiles(tiles);
-      }
-    } catch {
-      // Ignorar fallback
-    }
-  }, [darkMode, mapLoaded]);
 
 
   // Sincronizar centro cuando cambie center
@@ -525,7 +507,11 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     <View className={`w-full h-full relative overflow-hidden bg-slate-100 ${className}`}>
       {Platform.OS === 'web' ? (
         // @ts-ignore
-        <div ref={mapContainerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
+        <div
+          ref={mapContainerRef}
+          className={darkMode ? 'dark-map-mode' : ''}
+          style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
+        />
       ) : (
         <View className="flex-1 items-center justify-center p-4">
           <Text className="text-slate-500 font-medium text-center">

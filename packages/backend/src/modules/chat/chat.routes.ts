@@ -7,4 +7,5 @@ import { sendChatMessageSchema } from '@plataforma/shared';
 export const chatRouter = Router();
 
 chatRouter.post('/', authenticateJWT, validate(sendChatMessageSchema), chatController.sendMessage);
+chatRouter.get('/my-chats', authenticateJWT, chatController.getUserChats);
 chatRouter.get('/history/:orderId', authenticateJWT, chatController.getChatHistory);

@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Plataforma Universal",
-    "slug": "plataforma-logistica",
+    "name": "DOMY",
+    "slug": "domy-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "plataforma",
+    "scheme": "domy",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -15,14 +15,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.plataforma.app"
+      "bundleIdentifier": "com.domy.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
       },
-      "package": "com.plataforma.app",
+      "package": "com.domy.app",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",

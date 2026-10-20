@@ -5,7 +5,11 @@ import { UniversalMap } from '../../components/map/UniversalMap';
 import { Button } from '../../components/common/Button';
 import { PinModal } from '../../components/common/PinModal';
 import { ChatModal } from '../../components/chat/ChatModal';
+import { ChatsModal } from '../../components/chat/ChatsModal';
 import { HistoryModal } from '../../components/common/HistoryModal';
+import { PqrModal } from '../../components/common/PqrModal';
+import { AppDrawer } from '../../components/common/AppDrawer';
+import { NotificationBanner, BannerNotification } from '../../components/common/NotificationBanner';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -39,12 +43,17 @@ export default function CourierHomeScreen() {
   const [destCustomInput, setDestCustomInput] = useState('');
   const [onlyShowMatchingDest, setOnlyShowMatchingDest] = useState(false);
 
-  // Modales
+  // Modales y Notificaciones
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [selectedOrderIdForPin, setSelectedOrderIdForPin] = useState<string | null>(null);
   const [chatModalVisible, setChatModalVisible] = useState(false);
+  const [chatsModalVisible, setChatsModalVisible] = useState(false);
   const [selectedOrderIdForChat, setSelectedOrderIdForChat] = useState<string | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [pqrModalVisible, setPqrModalVisible] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [activeNotification, setActiveNotification] = useState<BannerNotification | null>(null);
+  const [unreadChatsCount, setUnreadChatsCount] = useState(0);
   const [loadingAction, setLoadingAction] = useState(false);
 
   // Capturar GPS explícitamente
@@ -132,14 +141,38 @@ export default function CourierHomeScreen() {
               delete next[payload.orderId];
               return next;
             });
-            if (Platform.OS === 'web') {
-              alert('🎉 ¡El cliente ha aceptado tu tarifa! El pedido está en curso.');
-            } else {
-              Alert.alert('¡Adjudicado!', 'El cliente ha aceptado tu tarifa. Dirígete al origen.');
-            }
+            // 1. Unirse a la sala socket de la orden
+            socket.emit('order:join', payload.orderId);
+            // 2. Iniciar rastreo de ubicación de inmediato
+            locationTracker.startTracking([payload.orderId]);
+            // 3. Emitir notificación superior
+            setActiveNotification({
+              id: `assigned_${Date.now()}`,
+              type: 'STATUS',
+              title: '🎉 ¡Pedido Adjudicado!',
+              message: 'El cliente ha aceptado tu tarifa. Dirígete al punto de recogida.',
+            });
           }
         } catch {
           // Fallback
+        }
+      }
+    };
+
+    const handleChatReceive = (msg: any) => {
+      if (msg.senderId !== user?.id) {
+        setUnreadChatsCount((prev) => prev + 1);
+        if (!chatModalVisible) {
+          setActiveNotification({
+            id: `chat_${Date.now()}`,
+            type: 'CHAT',
+            title: `💬 Mensaje de ${msg.senderName || 'Cliente'}`,
+            message: msg.content,
+            onPress: () => {
+              setSelectedOrderIdForChat(msg.orderId);
+              setChatModalVisible(true);
+            },
+          });
         }
       }
     };
@@ -148,6 +181,7 @@ export default function CourierHomeScreen() {
     socket.on(SOCKET_EVENTS.ORDER_CORRIDOR_ALERT, handleCorridorAlert);
     socket.on(SOCKET_EVENTS.ORDER_CANCELLED, handleOrderCancelled);
     socket.on(SOCKET_EVENTS.ORDER_ASSIGNED, handleOrderAssigned);
+    socket.on(SOCKET_EVENTS.CHAT_RECEIVE, handleChatReceive);
 
     return () => {
       isMounted = false;
@@ -155,6 +189,7 @@ export default function CourierHomeScreen() {
       socket.off(SOCKET_EVENTS.ORDER_CORRIDOR_ALERT, handleCorridorAlert);
       socket.off(SOCKET_EVENTS.ORDER_CANCELLED, handleOrderCancelled);
       socket.off(SOCKET_EVENTS.ORDER_ASSIGNED, handleOrderAssigned);
+      socket.off(SOCKET_EVENTS.CHAT_RECEIVE, handleChatReceive);
       locationTracker.stopTracking();
     };
   }, [activeOrders, user?.id]);
@@ -277,14 +312,35 @@ export default function CourierHomeScreen() {
 
   return (
     <View className={`flex-1 ${darkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
-      {/* Barra Superior del Conductor */}
-      <View className="bg-secondary px-5 py-4 pt-10 shadow-md">
+      {/* Notificación Superior Push-Like */}
+      <NotificationBanner
+        notification={activeNotification}
+        onDismiss={() => setActiveNotification(null)}
+      />
+
+      {/* Barra Superior Móvil con Menú Hamburguesa */}
+      <View className="bg-secondary px-4 py-3 pt-12 shadow-md z-20">
         <View className="flex-row items-center justify-between">
-          <View>
-            <Text className="text-white font-bold text-lg">{user?.fullName}</Text>
-            <View className="flex-row items-center gap-1.5 mt-0.5">
-              <View className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <Text className="text-xs text-slate-300">Conductor Conectado • Radar Activo</Text>
+          <View className="flex-row items-center gap-3">
+            {/* Botón Hamburguesa ☰ con alerta de no leídos */}
+            <TouchableOpacity
+              onPress={() => setDrawerVisible(true)}
+              className="w-10 h-10 rounded-2xl bg-white/10 border border-white/20 items-center justify-center active:bg-white/20 relative"
+            >
+              <Text className="text-white text-lg font-bold">☰</Text>
+              {unreadChatsCount > 0 && (
+                <View className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-primary border-2 border-secondary" />
+              )}
+            </TouchableOpacity>
+
+            <View>
+              <Text className="text-white font-black text-base tracking-tight">
+                ⚡ DOMY CONDUCTOR
+              </Text>
+              <View className="flex-row items-center gap-1.5 mt-0.5">
+                <View className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <Text className="text-[11px] text-slate-300">Radar Activo • En Línea</Text>
+              </View>
             </View>
           </View>
 
@@ -299,68 +355,14 @@ export default function CourierHomeScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => setHistoryVisible(true)}
-              className="bg-white/10 border border-white/20 px-3 py-1.5 rounded-full flex-row items-center gap-1 active:bg-white/20"
-            >
-              <Text className="text-white font-bold text-xs">📜 Historial</Text>
-            </TouchableOpacity>
-
-            {/* Toggle Modo Oscuro / Noche (Feature 7) */}
-            <TouchableOpacity
-              onPress={() => setDarkMode(!darkMode)}
-              className={`border px-2.5 py-1.5 rounded-full flex-row items-center gap-1 ${
-                darkMode ? 'bg-amber-400/20 border-amber-400/50' : 'bg-white/10 border-white/20'
-              }`}
-            >
-              <Text className="text-white font-bold text-xs">
-                {darkMode ? '☀️ Día' : '🌙 Noche'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                logout();
-                router.replace('/(auth)/login');
-              }}
-              className="bg-red-500/20 border border-red-500/40 px-3 py-1.5 rounded-full flex-row items-center gap-1"
-            >
-              <Text className="text-red-300 font-bold text-xs">🚪 Salir</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Fila inferior: GPS y Modo Destino */}
-        <View className="mt-3 flex-row items-center justify-between pt-2 border-t border-slate-700/60">
-          <View className="flex-row items-center gap-2">
-            <Text className="text-xs text-slate-300">
-              📍 {courierLocation ? `GPS: ${courierLocation.latitude.toFixed(4)}, ${courierLocation.longitude.toFixed(4)}` : 'Sin fijar GPS'}
-            </Text>
-          </View>
-
-          <View className="flex-row items-center gap-2">
-            {/* Botón para abrir Modo Destino (Feature 4) */}
-            <TouchableOpacity
-              onPress={() => setDestModalVisible(true)}
-              className={`px-3 py-1 rounded-full flex-row items-center gap-1 border shadow-sm ${
-                targetDestination
-                  ? 'bg-emerald-600 border-emerald-400'
-                  : 'bg-primary/20 border-primary/40'
-              }`}
-            >
-              <Text className={`text-xs font-bold ${targetDestination ? 'text-white' : 'text-primary'}`}>
-                {targetDestination ? `🎯 Hacia: ${targetDestination}` : '🎯 Modo Destino'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
               onPress={handleCaptureGps}
               disabled={locatingGps}
-              className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3 py-1 rounded-full flex-row items-center gap-1.5 shadow-sm"
+              className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3 py-1.5 rounded-full flex-row items-center gap-1.5 shadow-sm"
             >
               {locatingGps ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text className="text-xs font-bold text-white">🎯 Mi Ubicación (GPS)</Text>
+                <Text className="text-xs font-bold text-white">📍 GPS</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -866,10 +868,47 @@ export default function CourierHomeScreen() {
         />
       )}
 
+      {/* Bandeja de Todos los Chats */}
+      <ChatsModal
+        visible={chatsModalVisible}
+        onClose={() => setChatsModalVisible(false)}
+        onSelectChat={(orderId) => {
+          setSelectedOrderIdForChat(orderId);
+          setChatModalVisible(true);
+        }}
+      />
+
+      {/* Menú Lateral Hamburguesa del Conductor */}
+      <AppDrawer
+        visible={drawerVisible}
+        onClose={() => setDrawerVisible(false)}
+        user={user}
+        isCourier={true}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode(!darkMode)}
+        onOpenChats={() => setChatsModalVisible(true)}
+        onOpenHistory={() => setHistoryVisible(true)}
+        onOpenDestinationMode={() => setDestModalVisible(true)}
+        onOpenWallet={() => router.push('/(courier)/wallet')}
+        onOpenPqr={() => setPqrModalVisible(true)}
+        onLogout={() => {
+          logout();
+          router.replace('/(auth)/login');
+        }}
+        unreadChatsCount={unreadChatsCount}
+      />
+
       <HistoryModal
         visible={historyVisible}
         onClose={() => setHistoryVisible(false)}
         isCourier={true}
+      />
+
+      <PqrModal
+        visible={pqrModalVisible}
+        orderId={activeOrders[0]?.id || ''}
+        isCourier={true}
+        onClose={() => setPqrModalVisible(false)}
       />
     </View>
   );

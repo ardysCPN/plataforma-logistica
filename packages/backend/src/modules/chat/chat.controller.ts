@@ -30,4 +30,18 @@ export const chatController = {
       res.status(403).json({ error: message });
     }
   },
+
+  async getUserChats(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const chats = await chatService.getUserChatConversations(req.user.id);
+      res.json(chats);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al obtener conversaciones';
+      res.status(500).json({ error: message });
+    }
+  },
 };
