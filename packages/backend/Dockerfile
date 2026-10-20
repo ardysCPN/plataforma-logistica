@@ -7,15 +7,19 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copiar package.json y lockfiles del monorepo
-COPY package.json package-lock.json tsconfig.base.json ./
+# Copiar configuraciones base y workspaces
+COPY package*.json tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY packages/backend ./packages/backend
+COPY packages/app-universal/package*.json ./packages/app-universal/
 
-# Instalar dependencias y compilar
+# Instalar dependencias y compilar paquetes TypeScript
 RUN npm ci
 RUN npm run build -w @plataforma/shared
 RUN npm run build -w @plataforma/backend
+
+# Podar dependencias de desarrollo para optimizar la imagen final
+RUN npm prune --omit=dev
 
 # 2. Production Stage
 FROM node:20-alpine AS runner
@@ -23,15 +27,16 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copiar configuraciones y dependencias del builder
-COPY package.json package-lock.json ./
+# Copiar package.json y distribuciones compiladas desde el builder
+COPY package*.json ./
 COPY packages/shared/package.json ./packages/shared/
-COPY packages/shared/dist ./packages/shared/dist
-COPY packages/backend/package.json ./packages/backend/
-COPY packages/backend/dist ./packages/backend/dist
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 
-# Instalar únicamente dependencias de producción
-RUN npm ci --omit=dev
+COPY packages/backend/package.json ./packages/backend/
+COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
+
+# Copiar node_modules de producción optimizado desde el builder
+COPY --from=builder /app/node_modules ./node_modules
 
 # Crear directorio para subida de comprobantes KYC
 RUN mkdir -p /app/uploads/kyc

@@ -4,9 +4,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy root configurations and workspace definitions
-COPY package*.json ./
+COPY package*.json tsconfig.base.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY packages/app-universal/package*.json ./packages/app-universal/
+COPY packages/backend/package*.json ./packages/backend/
 
 # Install dependencies
 RUN npm ci
