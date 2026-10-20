@@ -1,0 +1,47 @@
+name: CI/CD Pipeline Dokploy VPS
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-and-lint:
+    name: Tests & Quality Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar Dependencias
+        run: npm ci
+
+      - name: Compilar Workspaces
+        run: npm run build
+
+      - name: Ejecutar Suite de Pruebas Automatizadas
+        run: npm run test --workspaces
+
+  deploy-dokploy:
+    name: Despliegue en Dokploy VPS
+    needs: test-and-lint
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Disparar Webhook de Despliegue Automático en Dokploy
+        run: |
+          if [ -n "${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}" ]; then
+            echo "🚀 Notificando a Dokploy para reconstruir y desplegar contenedor..."
+            curl -X POST "${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}"
+          else
+            echo "ℹ️ DOKPLOY_DEPLOY_WEBHOOK no configurado en los secretos de GitHub. Omitiendo webhook."
+          fi
