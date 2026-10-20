@@ -3,6 +3,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { app } from './app';
 import { env } from './config/env';
 import { initSocketManager } from './sockets/socket.manager';
+import { initializeDatabase } from './config/migrate';
 
 export const httpServer = http.createServer(app);
 
@@ -20,8 +21,11 @@ export const io = new SocketIOServer(httpServer, {
 initSocketManager(io);
 
 if (process.env.NODE_ENV !== 'test') {
-  httpServer.listen(env.PORT, () => {
+  httpServer.listen(env.PORT, async () => {
     console.log(`🚀 Servidor backend escuchando en http://localhost:${env.PORT}`);
     console.log(`📡 Socket.io activo en el mismo puerto`);
+
+    // Inicializar y auto-migrar base de datos si es necesario
+    await initializeDatabase();
   });
 }

@@ -1,26 +1,26 @@
 services:
   postgres:
     image: postgis/postgis:16-3.4
-    container_name: plataforma_postgres
+    container_name: domi_postgres_local
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
-      POSTGRES_DB: ${DB_NAME:-plataforma_logistica}
+      POSTGRES_DB: ${POSTGRES_DB:-domi_logistica_db}
+      POSTGRES_USER: ${POSTGRES_USER:-domi_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-DomiSecure2026_xK9!}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-plataforma_logistica}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-domi_admin} -d ${POSTGRES_DB:-domi_logistica_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: plataforma_redis
+    container_name: domi_redis_local
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -36,20 +36,19 @@ services:
     build:
       context: .
       dockerfile: packages/backend/Dockerfile
-    container_name: plataforma_backend
+    container_name: domi_backend_local
     restart: unless-stopped
     environment:
       NODE_ENV: development
       PORT: 3001
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-postgres}
-      DB_PASSWORD: ${DB_PASSWORD:-postgres123}
-      DB_NAME: ${DB_NAME:-plataforma_logistica}
+      SERVER_PORT: 3001
+      SERVER_HOST: 0.0.0.0
+      CORS_ORIGIN: "*"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://domi_admin:DomiSecure2026_xK9!@postgres:5432/domi_logistica_db}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      JWT_SECRET: ${JWT_SECRET:-super_secret_jwt_key_local_testing_12345}
+      JWT_SECRET: ${JWT_SECRET:-adh_solutions_secret_jwt_key_2026_prod!}
       JWT_EXPIRES_IN: 7d
       OSRM_URL: ${OSRM_URL:-http://router.project-osrm.org}
       NOMINATIM_URL: ${NOMINATIM_URL:-https://nominatim.openstreetmap.org}
@@ -68,7 +67,7 @@ services:
     build:
       context: .
       dockerfile: packages/app-universal/Dockerfile
-    container_name: plataforma_web
+    container_name: domi_web_local
     restart: unless-stopped
     ports:
       - "8080:80"
