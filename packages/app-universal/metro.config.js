@@ -14,4 +14,7 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
-module.exports = withNativeWind(config, { input: './global.css' });
+const nwConfig = withNativeWind(config, { input: './global.css' });
+nwConfig.transformerPath = require.resolve('./metro-transformer');
+
+module.exports = nwConfig;
