@@ -14,8 +14,11 @@ export const corridorService = {
    */
   async getRouteGeometry(origin: GeoPoint, destination: GeoPoint): Promise<RouteCalculationResult> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       const url = `${env.OSRM_URL}/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = (await response.json()) as {
