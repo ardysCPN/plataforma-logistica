@@ -1,11 +1,17 @@
 # ==============================================================================
-# DOCKERFILE BACKEND: Node.js 20 Alpine Multi-stage Build para Dokploy
+# DOCKERFILE BACKEND: Node.js 20 Debian Bookworm Build para Dokploy
 # ==============================================================================
 
 # 1. Build Stage
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
+
+# Instalar herramientas básicas del sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copiar configuraciones base y workspaces
 COPY package*.json tsconfig.base.json ./
@@ -22,7 +28,7 @@ RUN npm run build -w @plataforma/backend
 RUN npm prune --omit=dev
 
 # 2. Production Stage
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
