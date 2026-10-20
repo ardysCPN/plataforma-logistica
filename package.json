@@ -13,5 +13,12 @@
   },
   "devDependencies": {
     "typescript": "^5.6.3"
+  },
+  "overrides": {
+    "metro": "0.81.5",
+    "metro-resolver": "0.81.5",
+    "metro-config": "0.81.5",
+    "metro-core": "0.81.5",
+    "metro-transform-worker": "0.81.5"
   }
 }
