@@ -1,6 +1,24 @@
-import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Platform, Text } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Platform, Text, TouchableOpacity } from 'react-native';
 import { GeoPoint } from '@plataforma/shared';
+
+export interface NearbyCourierMarker {
+  id: string;
+  latitude: number;
+  longitude: number;
+  vehicleType?: string;
+  bearing?: number;
+  name?: string;
+}
+
+export interface OrderMarker {
+  id: string;
+  latitude: number;
+  longitude: number;
+  price?: number;
+  serviceType?: string;
+  label?: string;
+}
 
 interface UniversalMapProps {
   center?: GeoPoint;
@@ -9,53 +27,77 @@ interface UniversalMapProps {
   destination?: GeoPoint | null;
   routeCoordinates?: [number, number][];
   courierLocation?: { latitude: number; longitude: number; bearing?: number } | null;
+  userLocation?: GeoPoint | null;
+  nearbyCouriers?: NearbyCourierMarker[];
+  orderMarkers?: OrderMarker[];
   onMapClick?: (point: GeoPoint) => void;
   className?: string;
 }
 
 export const UniversalMap: React.FC<UniversalMapProps> = ({
   center = { latitude: 6.2442, longitude: -75.5812 }, // Medellín por defecto
-  zoom = 13,
+  zoom = 14,
   origin,
   destination,
   routeCoordinates = [],
   courierLocation,
+  userLocation,
+  nearbyCouriers = [],
+  orderMarkers = [],
   onMapClick,
   className = '',
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
+  const markersRef = useRef<{ [key: string]: any }>({});
+  const [mapLoaded, setMapLoaded] = useState(false);
 
+  // Asegurar que la hoja de estilos de MapLibre esté presente en el navegador
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const linkId = 'maplibre-gl-css';
+      if (!document.getElementById(linkId)) {
+        const link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css';
+        document.head.appendChild(link);
+      }
+    }
+  }, []);
+
+  // Inicializar mapa MapLibre
   useEffect(() => {
     if (Platform.OS !== 'web' || !mapContainerRef.current) return;
 
-    // Carga dinámica de MapLibre GL en Web
-    const initWebMap = async () => {
+    let isMounted = true;
+
+    const initMap = async () => {
       try {
         const maplibregl = (await import('maplibre-gl')).default;
 
-        if (!mapInstanceRef.current) {
+        if (!mapInstanceRef.current && mapContainerRef.current) {
           const map = new maplibregl.Map({
             container: mapContainerRef.current as HTMLElement,
             style: {
               version: 8,
               sources: {
-                'carto-positron': {
+                'osm-raster-tiles': {
                   type: 'raster',
                   tiles: [
-                    'https://a.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png',
-                    'https://b.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png',
-                    'https://c.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png',
+                    'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
                   ],
                   tileSize: 256,
-                  attribution: '© OpenStreetMap contributors, © CARTO',
+                  attribution: '© OpenStreetMap contributors',
                 },
               },
               layers: [
                 {
-                  id: 'carto-tiles',
+                  id: 'osm-tiles-layer',
                   type: 'raster',
-                  source: 'carto-positron',
+                  source: 'osm-raster-tiles',
                   minzoom: 0,
                   maxzoom: 19,
                 },
@@ -65,6 +107,10 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
             zoom: zoom,
           });
 
+          map.on('load', () => {
+            if (isMounted) setMapLoaded(true);
+          });
+
           map.on('click', (e) => {
             if (onMapClick) {
               onMapClick({ latitude: e.lngLat.lat, longitude: e.lngLat.lng });
@@ -72,51 +118,329 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
           });
 
           mapInstanceRef.current = map;
-        } else {
+        } else if (mapInstanceRef.current) {
           mapInstanceRef.current.setCenter([center.longitude, center.latitude]);
         }
       } catch (err) {
-        console.warn('Error inicializando MapLibre GL:', err);
+        console.warn('Error inicializando mapa OSM MapLibre:', err);
       }
     };
 
-    initWebMap();
+    initMap();
 
     return () => {
+      isMounted = false;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
     };
-  }, [center.latitude, center.longitude]);
+  }, []);
+
+  // Sincronizar centro cuando cambie center
+  useEffect(() => {
+    if (mapInstanceRef.current && center) {
+      mapInstanceRef.current.easeTo({
+        center: [center.longitude, center.latitude],
+        duration: 800,
+      });
+    }
+  }, [center?.latitude, center?.longitude]);
+
+  // Actualizar marcadores y capas
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || Platform.OS !== 'web') return;
+
+    const renderMarkers = async () => {
+      const maplibregl = (await import('maplibre-gl')).default;
+
+      // Helper para crear o mover marcador
+      const updateOrCreateMarker = (
+        key: string,
+        coords: [number, number] | null,
+        htmlContent: string
+      ) => {
+        if (!coords) {
+          if (markersRef.current[key]) {
+            markersRef.current[key].remove();
+            delete markersRef.current[key];
+          }
+          return;
+        }
+
+        if (markersRef.current[key]) {
+          markersRef.current[key].setLngLat(coords);
+        } else {
+          const el = document.createElement('div');
+          el.innerHTML = htmlContent;
+          el.style.cursor = 'pointer';
+
+          const marker = new maplibregl.Marker({ element: el })
+            .setLngLat(coords)
+            .addTo(map);
+
+          markersRef.current[key] = marker;
+        }
+      };
+
+      // 1. Marcador de Usuario (Tú)
+      if (userLocation) {
+        updateOrCreateMarker(
+          'user_location',
+          [userLocation.longitude, userLocation.latitude],
+          `
+          <div style="position: relative; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 32px; height: 32px; background: rgba(59, 130, 246, 0.25); border-radius: 50%; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="width: 16px; height: 16px; background: #2563EB; border: 3px solid #FFFFFF; border-radius: 50%; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);"></div>
+          </div>
+          `
+        );
+      } else {
+        updateOrCreateMarker('user_location', null, '');
+      }
+
+      // 2. Marcador de Origen
+      if (origin) {
+        updateOrCreateMarker(
+          'origin',
+          [origin.longitude, origin.latitude],
+          `
+          <div style="display: flex; flex-direction: column; align-items: center; transform: translate(0, -10px);">
+            <div style="background: #10B981; color: white; font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.25); display: flex; align-items: center; gap: 4px;">
+              <span>📍</span> <span>Recogida</span>
+            </div>
+            <div style="width: 2px; height: 8px; background: #10B981;"></div>
+          </div>
+          `
+        );
+      } else {
+        updateOrCreateMarker('origin', null, '');
+      }
+
+      // 3. Marcador de Destino
+      if (destination) {
+        updateOrCreateMarker(
+          'destination',
+          [destination.longitude, destination.latitude],
+          `
+          <div style="display: flex; flex-direction: column; align-items: center; transform: translate(0, -10px);">
+            <div style="background: #EF4444; color: white; font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.25); display: flex; align-items: center; gap: 4px;">
+              <span>🏁</span> <span>Entrega</span>
+            </div>
+            <div style="width: 2px; height: 8px; background: #EF4444;"></div>
+          </div>
+          `
+        );
+      } else {
+        updateOrCreateMarker('destination', null, '');
+      }
+
+      // 4. Conductor Asignado en Vivo
+      if (courierLocation) {
+        updateOrCreateMarker(
+          'courier_live',
+          [courierLocation.longitude, courierLocation.latitude],
+          `
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <div style="background: #FF6B00; color: white; padding: 6px 10px; border-radius: 20px; font-weight: 900; font-size: 12px; box-shadow: 0 4px 12px rgba(255, 107, 0, 0.4); display: flex; align-items: center; gap: 4px;">
+              <span style="font-size: 15px;">🛵</span> <span>Conductor</span>
+            </div>
+          </div>
+          `
+        );
+      } else {
+        updateOrCreateMarker('courier_live', null, '');
+      }
+
+      // 5. Conductores Cercanos Disponibles en la Zona (Estilo Uber / InDrive)
+      const currentNearbyKeys = new Set(nearbyCouriers.map((c) => `nearby_${c.id}`));
+
+      // Limpiar conductores que ya no están
+      Object.keys(markersRef.current).forEach((k) => {
+        if (k.startsWith('nearby_') && !currentNearbyKeys.has(k)) {
+          markersRef.current[k].remove();
+          delete markersRef.current[k];
+        }
+      });
+
+      // Dibujar o mover conductores cercanos
+      nearbyCouriers.forEach((courier) => {
+        const key = `nearby_${courier.id}`;
+        const isCar = courier.vehicleType === 'CAR';
+        const icon = isCar ? '🚗' : '🛵';
+        const title = isCar ? 'Carro' : 'Moto';
+
+        updateOrCreateMarker(
+          key,
+          [courier.longitude, courier.latitude],
+          `
+          <div style="background: white; border: 2px solid #0F172A; border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 8px rgba(0,0,0,0.25); transform: rotate(${courier.bearing || 0}deg); transition: all 0.5s ease-out;">
+            <span style="font-size: 18px;">${icon}</span>
+          </div>
+          `
+        );
+      });
+
+      // 6. Marcadores de Pedidos Disponibles en el Radar
+      const currentOrderKeys = new Set(orderMarkers.map((o) => `order_${o.id}`));
+      Object.keys(markersRef.current).forEach((k) => {
+        if (k.startsWith('order_') && !currentOrderKeys.has(k)) {
+          markersRef.current[k].remove();
+          delete markersRef.current[k];
+        }
+      });
+
+      orderMarkers.forEach((order) => {
+        const key = `order_${order.id}`;
+        const icon = order.serviceType === 'ERRAND' ? '🛒' : '📦';
+        const priceText = order.price ? `$${order.price.toLocaleString()} COP` : 'Disponible';
+        updateOrCreateMarker(
+          key,
+          [order.longitude, order.latitude],
+          `
+          <div style="display: flex; flex-direction: column; align-items: center; cursor: pointer; transition: transform 0.2s;">
+            <div style="background: #2563EB; color: white; padding: 4px 8px; border-radius: 12px; font-weight: 800; font-size: 11px; box-shadow: 0 4px 10px rgba(37,99,235,0.4); display: flex; align-items: center; gap: 4px; white-space: nowrap; border: 1.5px solid #FFFFFF;">
+              <span>${icon}</span> <span>${priceText}</span>
+            </div>
+            <div style="width: 2px; height: 6px; background: #2563EB;"></div>
+          </div>
+          `
+        );
+      });
+
+      // 7. Trazar Línea de Ruta (Route Polyline)
+      if (origin && destination) {
+        const coordinates =
+          routeCoordinates.length > 0
+            ? routeCoordinates
+            : [
+                [origin.longitude, origin.latitude],
+                [destination.longitude, destination.latitude],
+              ];
+
+        const routeData = {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: coordinates,
+          },
+        };
+
+        if (map.getSource('route-line')) {
+          (map.getSource('route-line') as any).setData(routeData);
+        } else if (mapLoaded) {
+          map.addSource('route-line', {
+            type: 'geojson',
+            data: routeData,
+          });
+
+          map.addLayer({
+            id: 'route-line-layer',
+            type: 'line',
+            source: 'route-line',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#FF6B00',
+              'line-width': 5,
+              'line-opacity': 0.85,
+            },
+          });
+        }
+      } else {
+        if (map.getLayer('route-line-layer')) {
+          map.removeLayer('route-line-layer');
+        }
+        if (map.getSource('route-line')) {
+          map.removeSource('route-line');
+        }
+      }
+    };
+
+    renderMarkers();
+  }, [
+    origin?.latitude,
+    origin?.longitude,
+    destination?.latitude,
+    destination?.longitude,
+    courierLocation?.latitude,
+    courierLocation?.longitude,
+    userLocation?.latitude,
+    userLocation?.longitude,
+    nearbyCouriers,
+    orderMarkers,
+    routeCoordinates,
+    mapLoaded,
+  ]);
+
+  // Controles flotantes
+  const handleRecenter = () => {
+    if (mapInstanceRef.current && userLocation) {
+      mapInstanceRef.current.flyTo({
+        center: [userLocation.longitude, userLocation.latitude],
+        zoom: 15,
+        essential: true,
+      });
+    } else if (mapInstanceRef.current && center) {
+      mapInstanceRef.current.flyTo({
+        center: [center.longitude, center.latitude],
+        zoom: 15,
+        essential: true,
+      });
+    }
+  };
+
+  const handleZoom = (delta: number) => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.zoomTo(mapInstanceRef.current.getZoom() + delta);
+    }
+  };
 
   return (
     <View className={`w-full h-full relative overflow-hidden bg-slate-100 ${className}`}>
       {Platform.OS === 'web' ? (
         // @ts-ignore
-        <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+        <div ref={mapContainerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
       ) : (
         <View className="flex-1 items-center justify-center p-4">
           <Text className="text-slate-500 font-medium text-center">
-            [Mapa Nativo OpenStreetMap - MapLibre Mobile Engine]
+            [Mapa Nativo OpenStreetMap]
           </Text>
-          {origin && (
-            <Text className="text-xs text-slate-700 mt-2">
-              Origen: {origin.latitude.toFixed(4)}, {origin.longitude.toFixed(4)}
-            </Text>
-          )}
-          {destination && (
-            <Text className="text-xs text-slate-700">
-              Destino: {destination.latitude.toFixed(4)}, {destination.longitude.toFixed(4)}
-            </Text>
-          )}
         </View>
       )}
 
-      {/* Indicadores flotantes de estado del mapa */}
-      <View className="absolute top-4 left-4 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-200 shadow-sm flex-row items-center gap-2">
+      {/* Indicador superior OSM libre */}
+      <View className="absolute top-4 left-4 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200 shadow-md flex-row items-center gap-2 z-10">
         <View className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-        <Text className="text-xs font-semibold text-slate-800">OSM Live Tiles ($0 API)</Text>
+        <Text className="text-xs font-bold text-slate-800">OpenStreetMap Live</Text>
+      </View>
+
+      {/* Controles de Mapa Flotantes */}
+      <View className="absolute bottom-5 right-4 gap-2 z-10">
+        <TouchableOpacity
+          onPress={handleRecenter}
+          className="w-11 h-11 bg-white rounded-full items-center justify-center shadow-lg border border-slate-200 active:bg-slate-100"
+        >
+          <Text className="text-lg">🎯</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => handleZoom(1)}
+          className="w-11 h-11 bg-white rounded-full items-center justify-center shadow-lg border border-slate-200 active:bg-slate-100"
+        >
+          <Text className="text-lg font-bold text-slate-800">＋</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => handleZoom(-1)}
+          className="w-11 h-11 bg-white rounded-full items-center justify-center shadow-lg border border-slate-200 active:bg-slate-100"
+        >
+          <Text className="text-lg font-bold text-slate-800">－</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );

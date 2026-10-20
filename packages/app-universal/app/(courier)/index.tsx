@@ -15,15 +15,17 @@ import {
   SOCKET_EVENTS,
   SocketOrderNewAvailablePayload,
   SocketCorridorAlertPayload,
+  GeoPoint,
 } from '@plataforma/shared';
 
 export default function CourierHomeScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
 
   const [availableOrders, setAvailableOrders] = useState<SocketOrderNewAvailablePayload[]>([]);
   const [corridorAlerts, setCorridorAlerts] = useState<SocketCorridorAlertPayload[]>([]);
   const [activeOrders, setActiveOrders] = useState<ServiceOrder[]>([]);
+  const [courierLocation, setCourierLocation] = useState<GeoPoint | null>(null);
 
   // Modales
   const [pinModalVisible, setPinModalVisible] = useState(false);
@@ -33,12 +35,28 @@ export default function CourierHomeScreen() {
   const [loadingAction, setLoadingAction] = useState(false);
 
   useEffect(() => {
-    // Iniciar rastreo de ubicación en segundo plano
-    locationTracker.requestPermissions().then((granted) => {
-      if (granted) {
+    let isMounted = true;
+
+    // Iniciar rastreo y pedir permisos GPS en web/móvil
+    locationTracker.requestPermissions().then(async (granted) => {
+      if (granted && isMounted) {
+        const loc = await locationTracker.getCurrentLocation();
+        if (loc && isMounted) {
+          setCourierLocation({ latitude: loc.latitude, longitude: loc.longitude });
+        }
         locationTracker.startTracking(activeOrders.map((o) => o.id));
       }
     });
+
+    // Cargar órdenes disponibles en la zona
+    api
+      .get<SocketOrderNewAvailablePayload[]>('/api/orders/available')
+      .then((res) => {
+        if (isMounted && Array.isArray(res.data)) {
+          setAvailableOrders(res.data);
+        }
+      })
+      .catch((err) => console.warn('Error cargando órdenes disponibles:', err));
 
     const socket = getSocket();
 
@@ -50,12 +68,20 @@ export default function CourierHomeScreen() {
       setCorridorAlerts((prev) => [alert, ...prev.filter((a) => a.orderId !== alert.orderId)]);
     };
 
+    const handleOrderCancelled = (data: { orderId: string }) => {
+      setAvailableOrders((prev) => prev.filter((o) => o.orderId !== data.orderId));
+      setActiveOrders((prev) => prev.filter((o) => o.id !== data.orderId));
+    };
+
     socket.on(SOCKET_EVENTS.ORDER_NEW_AVAILABLE, handleNewOrder);
     socket.on(SOCKET_EVENTS.ORDER_CORRIDOR_ALERT, handleCorridorAlert);
+    socket.on(SOCKET_EVENTS.ORDER_CANCELLED, handleOrderCancelled);
 
     return () => {
+      isMounted = false;
       socket.off(SOCKET_EVENTS.ORDER_NEW_AVAILABLE, handleNewOrder);
       socket.off(SOCKET_EVENTS.ORDER_CORRIDOR_ALERT, handleCorridorAlert);
+      socket.off(SOCKET_EVENTS.ORDER_CANCELLED, handleOrderCancelled);
       locationTracker.stopTracking();
     };
   }, [activeOrders]);
@@ -122,7 +148,7 @@ export default function CourierHomeScreen() {
   return (
     <View className="flex-1 bg-slate-50">
       {/* Barra Superior del Conductor */}
-      <View className="bg-secondary px-5 py-4 pt-12 flex-row items-center justify-between shadow-md">
+      <View className="bg-secondary px-5 py-4 pt-10 flex-row items-center justify-between shadow-md">
         <View>
           <Text className="text-white font-bold text-lg">{user?.fullName}</Text>
           <View className="flex-row items-center gap-1.5 mt-0.5">
@@ -131,14 +157,26 @@ export default function CourierHomeScreen() {
           </View>
         </View>
 
-        <TouchableOpacity
-          onPress={() => router.push('/(courier)/wallet')}
-          className="bg-primary/20 border border-primary/50 px-3.5 py-1.5 rounded-full flex-row items-center gap-1.5"
-        >
-          <Text className="text-primary font-bold text-xs">
-            💰 ${user?.walletBalance || 0} COP
-          </Text>
-        </TouchableOpacity>
+        <View className="flex-row items-center gap-2">
+          <TouchableOpacity
+            onPress={() => router.push('/(courier)/wallet')}
+            className="bg-primary/20 border border-primary/50 px-3 py-1.5 rounded-full flex-row items-center gap-1"
+          >
+            <Text className="text-primary font-bold text-xs">
+              💰 ${user?.walletBalance || 0} COP
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => {
+              logout();
+              router.replace('/login');
+            }}
+            className="bg-red-500/20 border border-red-500/40 px-3 py-1.5 rounded-full flex-row items-center gap-1"
+          >
+            <Text className="text-red-300 font-bold text-xs">🚪 Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Alerta Destacada de Pedido en Corredor (Batching) */}
@@ -160,6 +198,25 @@ export default function CourierHomeScreen() {
           />
         </View>
       )}
+
+      {/* Mapa del Domiciliario y Radar GPS */}
+      <View style={{ height: 260, width: '100%', position: 'relative' }}>
+        <UniversalMap
+          center={courierLocation || { latitude: 6.2442, longitude: -75.5812 }}
+          zoom={14}
+          userLocation={courierLocation}
+          courierLocation={courierLocation}
+          origin={activeOrders[0]?.originPoint}
+          destination={activeOrders[0]?.destinationPoint}
+          orderMarkers={availableOrders.map((o) => ({
+            id: o.orderId,
+            latitude: o.originPoint?.latitude || 6.2442,
+            longitude: o.originPoint?.longitude || -75.5812,
+            price: o.offeredPrice,
+            serviceType: o.serviceType,
+          }))}
+        />
+      </View>
 
       {/* Contenido Principal */}
       <ScrollView className="flex-1 p-4">

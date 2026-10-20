@@ -151,4 +151,11 @@ export const socketEvents = {
       ioInstance.to(`order:${orderId}`).emit(SOCKET_EVENTS.ORDER_STATUS_CHANGE, payload);
     }
   },
+
+  emitOrderCancelled(orderId: string) {
+    if (ioInstance) {
+      ioInstance.to('role:COURIER').emit(SOCKET_EVENTS.ORDER_CANCELLED, { orderId });
+      ioInstance.to(`order:${orderId}`).emit(SOCKET_EVENTS.ORDER_CANCELLED, { orderId });
+    }
+  },
 };

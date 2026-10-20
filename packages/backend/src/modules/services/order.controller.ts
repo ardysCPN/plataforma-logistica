@@ -61,4 +61,42 @@ export const orderController = {
       res.status(404).json({ error: message });
     }
   },
+
+  async cancelOrder(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const { orderId } = req.params;
+      const result = await orderService.cancelOrder(orderId, req.user.id);
+      res.json(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error cancelando la orden';
+      res.status(400).json({ error: message });
+    }
+  },
+
+  async getNearbyCouriers(req: Request, res: Response): Promise<void> {
+    try {
+      const lat = Number(req.query.lat) || 6.2442;
+      const lng = Number(req.query.lng) || -75.5812;
+      const radius = Number(req.query.radius) || 15000;
+      const couriers = await orderService.getNearbyCouriers(lat, lng, radius);
+      res.json(couriers);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error obteniendo conductores';
+      res.status(500).json({ error: message });
+    }
+  },
+
+  async getAvailable(req: Request, res: Response): Promise<void> {
+    try {
+      const orders = await orderService.getAvailableOrders();
+      res.json(orders);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error obteniendo órdenes disponibles';
+      res.status(500).json({ error: message });
+    }
+  },
 };

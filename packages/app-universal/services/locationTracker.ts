@@ -38,9 +38,25 @@ if (Platform.OS !== 'web') {
   });
 }
 
+let webWatchId: number | null = null;
+
 export const locationTracker = {
   async requestPermissions(): Promise<boolean> {
-    if (Platform.OS === 'web') return true;
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+        return new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            () => resolve(true),
+            (err) => {
+              console.warn('Permiso de GPS en navegador rechazado o fallido:', err.message);
+              resolve(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
+        });
+      }
+      return false;
+    }
 
     const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
     if (foregroundStatus !== 'granted') return false;
@@ -49,9 +65,55 @@ export const locationTracker = {
     return backgroundStatus === 'granted';
   },
 
+  async getCurrentLocation(): Promise<{ latitude: number; longitude: number } | null> {
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+        return new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 10000 }
+          );
+        });
+      }
+      return null;
+    }
+
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      return { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+    } catch {
+      return null;
+    }
+  },
+
   async startTracking(orderIds: string[] = []) {
     activeOrdersList = orderIds;
-    if (Platform.OS === 'web') return;
+
+    if (Platform.OS === 'web') {
+      if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+        if (webWatchId !== null) {
+          navigator.geolocation.clearWatch(webWatchId);
+        }
+        webWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const socket = getSocket();
+            if (socket && socket.connected) {
+              socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                bearing: pos.coords.heading || 0,
+                speed: pos.coords.speed || 0,
+                activeOrderIds: activeOrdersList,
+              });
+            }
+          },
+          (err) => console.warn('Error rastreando GPS web:', err.message),
+          { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 }
+        );
+      }
+      return;
+    }
 
     const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     if (!hasStarted) {
@@ -69,7 +131,14 @@ export const locationTracker = {
   },
 
   async stopTracking() {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web') {
+      if (webWatchId !== null && typeof navigator !== 'undefined') {
+        navigator.geolocation.clearWatch(webWatchId);
+        webWatchId = null;
+      }
+      return;
+    }
+
     const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
     if (hasStarted) {
       await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);

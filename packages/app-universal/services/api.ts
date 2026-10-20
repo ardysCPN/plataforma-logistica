@@ -4,8 +4,9 @@ import { Platform } from 'react-native';
 // En Android emulador localhost es 10.0.2.2; en web/dispositivo real se usa la IP de red o variable de entorno
 const getBaseUrl = () => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:3001';
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)) {
+      return `http://${host}:3001`;
     }
   }
   if (process.env.EXPO_PUBLIC_API_URL) {

@@ -14,7 +14,17 @@ orderRouter.post(
   orderController.createOrder
 );
 
+orderRouter.get('/nearby-couriers', authenticateJWT, orderController.getNearbyCouriers);
+orderRouter.get('/available', authenticateJWT, orderController.getAvailable);
+
 orderRouter.get('/:id', authenticateJWT, orderController.getOrder);
+
+orderRouter.post(
+  '/:orderId/cancel',
+  authenticateJWT,
+  requireRole(['CLIENT']),
+  orderController.cancelOrder
+);
 
 orderRouter.patch(
   '/:orderId/status',

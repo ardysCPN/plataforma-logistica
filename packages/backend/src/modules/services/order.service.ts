@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { db } from '../../config/database';
 import { CreateOrderInput, ServiceOrder, OrderStatus } from '@plataforma/shared';
+import { socketEvents } from '../../sockets/socket.manager';
 
 export const orderService = {
   async createOrder(clientId: string, input: CreateOrderInput) {
@@ -50,7 +51,7 @@ export const orderService = {
     const res = await db.query(query, values);
     const row = res.rows[0];
 
-    return {
+    const createdOrder = {
       id: row.id,
       clientId: row.clientId,
       serviceType: row.serviceType,
@@ -65,6 +66,22 @@ export const orderService = {
       deliveryPin: row.deliveryPin,
       createdAt: row.createdAt,
     };
+
+    // Emitir a todos los conductores activos para radar en tiempo real
+    socketEvents.emitNewOrderAvailable({
+      orderId: createdOrder.id,
+      serviceType: createdOrder.serviceType,
+      originAddress: createdOrder.originAddress,
+      originPoint: createdOrder.originPoint,
+      destinationAddress: createdOrder.destinationAddress,
+      destinationPoint: createdOrder.destinationPoint,
+      offeredPrice: createdOrder.offeredPrice,
+      descriptionNotes: createdOrder.descriptionNotes,
+      estimatedPurchaseCost: createdOrder.estimatedPurchaseCost,
+      createdAt: new Date().toISOString(),
+    });
+
+    return createdOrder;
   },
 
   async updateStatus(orderId: string, courierId: string, newStatus: OrderStatus) {
@@ -248,5 +265,121 @@ export const orderService = {
         vehiclePlate: r.vehiclePlate,
       } : null,
     };
+  },
+
+  async cancelOrder(orderId: string, clientId: string) {
+    const res = await db.query(
+      `SELECT id, client_id as "clientId", courier_id as "courierId", status
+       FROM service_orders WHERE id = $1`,
+      [orderId]
+    );
+
+    if (res.rows.length === 0) {
+      throw new Error('Orden no encontrada');
+    }
+
+    const order = res.rows[0];
+    if (order.clientId !== clientId) {
+      throw new Error('No estás autorizado para cancelar esta orden');
+    }
+
+    if (order.status === 'COMPLETED') {
+      throw new Error('No se puede cancelar una orden que ya fue completada');
+    }
+
+    if (order.status === 'CANCELLED') {
+      throw new Error('La orden ya fue cancelada previamente');
+    }
+
+    await db.query(
+      `UPDATE service_orders SET status = 'CANCELLED' WHERE id = $1`,
+      [orderId]
+    );
+
+    // Si había conductor asignado, liberar su contador de órdenes
+    if (order.courierId) {
+      await db.query(
+        `UPDATE courier_profiles
+         SET active_orders_count = GREATEST(0, active_orders_count - 1)
+         WHERE user_id = $1`,
+        [order.courierId]
+      );
+    }
+
+    // Notificar por WebSockets
+    socketEvents.emitOrderCancelled(orderId);
+    socketEvents.emitOrderStatusChange(orderId, {
+      orderId,
+      newStatus: 'CANCELLED',
+      updatedAt: new Date().toISOString(),
+      details: { message: 'La orden fue cancelada por el cliente' },
+    });
+
+    return {
+      orderId,
+      status: 'CANCELLED',
+      message: 'Orden cancelada exitosamente',
+    };
+  },
+
+  async getNearbyCouriers(latitude: number, longitude: number, radiusMeters: number = 15000) {
+    const res = await db.query(
+      `SELECT u.id, u.full_name as "fullName", u.rating_avg as "ratingAvg",
+              cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate",
+              cp.is_online as "isOnline",
+              ST_Y(cp.current_location::geometry) as latitude,
+              ST_X(cp.current_location::geometry) as longitude,
+              COALESCE(cp.current_bearing, 0) as bearing,
+              ROUND(ST_Distance(cp.current_location::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography)::numeric, 0) as "distanceMeters"
+       FROM courier_profiles cp
+       JOIN users u ON cp.user_id = u.id
+       WHERE cp.current_location IS NOT NULL
+         AND cp.is_online = TRUE
+       ORDER BY "distanceMeters" ASC
+       LIMIT 20`,
+      [longitude, latitude]
+    );
+
+    return res.rows.map((r: any) => ({
+      id: r.id,
+      fullName: r.fullName,
+      ratingAvg: Number(r.ratingAvg),
+      vehicleType: r.vehicleType,
+      vehiclePlate: r.vehiclePlate,
+      isOnline: r.isOnline,
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      bearing: Number(r.bearing),
+      distanceMeters: Number(r.distanceMeters),
+    }));
+  },
+
+  async getAvailableOrders() {
+    const res = await db.query(
+      `SELECT id as "orderId", service_type as "serviceType", status,
+              origin_address as "originAddress",
+              ST_Y(origin_point::geometry) as "originLat", ST_X(origin_point::geometry) as "originLng",
+              destination_address as "destinationAddress",
+              ST_Y(destination_point::geometry) as "destLat", ST_X(destination_point::geometry) as "destLng",
+              description_notes as "descriptionNotes", estimated_purchase_cost as "estimatedPurchaseCost",
+              offered_price as "offeredPrice", created_at as "createdAt"
+       FROM service_orders
+       WHERE status = 'SEARCHING'
+       ORDER BY created_at DESC
+       LIMIT 30`
+    );
+
+    return res.rows.map((row: any) => ({
+      orderId: row.orderId,
+      serviceType: row.serviceType,
+      originAddress: row.originAddress,
+      originPoint: { latitude: Number(row.originLat), longitude: Number(row.originLng) },
+      destinationAddress: row.destinationAddress,
+      destinationPoint: { latitude: Number(row.destLat), longitude: Number(row.destLng) },
+      offeredPrice: Number(row.offeredPrice),
+      descriptionNotes: row.descriptionNotes,
+      estimatedPurchaseCost: Number(row.estimatedPurchaseCost || 0),
+      createdAt: row.createdAt,
+    }));
   },
 };

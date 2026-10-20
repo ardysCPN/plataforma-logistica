@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
-import { UniversalMap } from '../../components/map/UniversalMap';
+import { useRouter } from 'expo-router';
+import { UniversalMap, NearbyCourierMarker } from '../../components/map/UniversalMap';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { ChatModal } from '../../components/chat/ChatModal';
@@ -9,10 +10,10 @@ import { RatingModal } from '../../components/common/RatingModal';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
+import { locationTracker } from '../../services/locationTracker';
 import {
   ServiceType,
   ServiceOrder,
-  OrderBid,
   GeoPoint,
   SOCKET_EVENTS,
   SocketBidReceivedPayload,
@@ -20,28 +21,135 @@ import {
 } from '@plataforma/shared';
 
 export default function ClientHomeScreen() {
+  const router = useRouter();
   const { user, logout } = useAuthStore();
+
+  // Ubicación del usuario (GPS)
+  const [userLocation, setUserLocation] = useState<GeoPoint | null>(null);
 
   // Estados de solicitud
   const [serviceType, setServiceType] = useState<ServiceType>('DELIVERY');
-  const [originAddress, setOriginAddress] = useState('Calle 10 # 43E-20, El Poblado');
-  const [originPoint, setOriginPoint] = useState<GeoPoint>({ latitude: 6.2085, longitude: -75.5678 });
-  const [destAddress, setDestAddress] = useState('Carrera 43A # 1-50, San Fernando');
-  const [destPoint, setDestPoint] = useState<GeoPoint>({ latitude: 6.2012, longitude: -75.5721 });
+  const [originAddress, setOriginAddress] = useState('Obteniendo tu ubicación GPS...');
+  const [originPoint, setOriginPoint] = useState<GeoPoint>({ latitude: 6.2442, longitude: -75.5812 });
+  const [destAddress, setDestAddress] = useState('Parque Lleras, Medellín');
+  const [destPoint, setDestPoint] = useState<GeoPoint>({ latitude: 6.2085, longitude: -75.5678 });
   const [description, setDescription] = useState('');
   const [estimatedPurchase, setEstimatedPurchase] = useState('25000');
-  const [offeredPrice, setOfferedPrice] = useState('8000');
+  const [offeredPrice, setOfferedPrice] = useState('10000');
 
   // Estado de orden activa
   const [activeOrder, setActiveOrder] = useState<ServiceOrder | null>(null);
   const [incomingBids, setIncomingBids] = useState<SocketBidReceivedPayload[]>([]);
   const [courierLocation, setCourierLocation] = useState<{ latitude: number; longitude: number; bearing?: number } | null>(null);
 
+  // Conductores cercanos en mapa (Estilo Uber / InDrive)
+  const [nearbyCouriers, setNearbyCouriers] = useState<NearbyCourierMarker[]>([]);
+
   // Modales
   const [chatVisible, setChatVisible] = useState(false);
   const [ratingVisible, setRatingVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
+  // 1. Inicialización de GPS en Navegador / Móvil
+  useEffect(() => {
+    let isMounted = true;
+
+    const requestGps = async () => {
+      try {
+        const granted = await locationTracker.requestPermissions();
+        if (granted) {
+          const loc = await locationTracker.getCurrentLocation();
+          if (loc && isMounted) {
+            setUserLocation(loc);
+            setOriginPoint(loc);
+            setOriginAddress('Mi ubicación actual (GPS)');
+            fetchNearbyCouriers(loc.latitude, loc.longitude);
+          }
+        } else {
+          // Si no concedió permiso, usar punto por defecto y buscar conductores
+          fetchNearbyCouriers(6.2442, -75.5812);
+        }
+      } catch (err) {
+        console.warn('Error inicializando geolocalización:', err);
+      }
+    };
+
+    requestGps();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Consulta y Simulación de Conductores Cercanos (Estilo Uber/InDrive)
+  const fetchNearbyCouriers = async (lat: number, lng: number) => {
+    try {
+      const res = await api.get<any[]>('/api/orders/nearby-couriers', {
+        params: { lat, lng, radius: 10000 },
+      });
+
+      let couriers: NearbyCourierMarker[] = res.data.map((c) => ({
+        id: c.id,
+        latitude: c.latitude,
+        longitude: c.longitude,
+        vehicleType: c.vehicleType || 'MOTO',
+        bearing: c.bearing || 0,
+        name: c.fullName,
+      }));
+
+      // Si hay menos de 3 conductores reales registrados en la zona de prueba,
+      // generamos 3 vehículos dinámicos alrededor del cliente para dar dinamismo visual (InDrive style)
+      if (couriers.length < 3) {
+        const simulatedOffsets = [
+          { dLat: 0.0035, dLng: 0.0028, type: 'MOTO', angle: 45 },
+          { dLat: -0.0028, dLng: 0.0042, type: 'CAR', angle: 120 },
+          { dLat: 0.0041, dLng: -0.0031, type: 'MOTO', angle: 210 },
+          { dLat: -0.0032, dLng: -0.0025, type: 'MOTO', angle: 315 },
+        ];
+
+        const simulated = simulatedOffsets.map((s, idx) => ({
+          id: `sim_${idx + 1}`,
+          latitude: lat + s.dLat,
+          longitude: lng + s.dLng,
+          vehicleType: s.type,
+          bearing: s.angle,
+          name: `Conductor Cercano #${idx + 1}`,
+        }));
+
+        couriers = [...couriers, ...simulated];
+      }
+
+      setNearbyCouriers(couriers);
+    } catch {
+      // Ignorar fallback
+    }
+  };
+
+  // Movimiento sutil periódico de los carritos en el mapa (efecto InDrive)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNearbyCouriers((prev) =>
+        prev.map((c) => {
+          if (c.id.startsWith('sim_')) {
+            const deltaLat = (Math.random() - 0.5) * 0.0004;
+            const deltaLng = (Math.random() - 0.5) * 0.0004;
+            return {
+              ...c,
+              latitude: c.latitude + deltaLat,
+              longitude: c.longitude + deltaLng,
+              bearing: Math.floor(Math.random() * 360),
+            };
+          }
+          return c;
+        })
+      );
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // 3. Conexión de Sockets y Eventos en Vivo
   useEffect(() => {
     const socket = getSocket();
 
@@ -66,19 +174,31 @@ export default function ClientHomeScreen() {
       setCourierLocation(null);
     };
 
+    const handleCancelled = (payload: { orderId: string }) => {
+      if (activeOrder && activeOrder.id === payload.orderId) {
+        Alert.alert('Aviso', 'La orden fue cancelada.');
+        setActiveOrder(null);
+        setIncomingBids([]);
+        setCourierLocation(null);
+      }
+    };
+
     socket.on(SOCKET_EVENTS.BID_RECEIVED, handleBidReceived);
     socket.on(SOCKET_EVENTS.ORDER_ASSIGNED, handleAssigned);
     socket.on(SOCKET_EVENTS.LOCATION_CLIENT_FEED, handleLocationFeed);
     socket.on(SOCKET_EVENTS.ORDER_COMPLETED, handleCompleted);
+    socket.on(SOCKET_EVENTS.ORDER_CANCELLED, handleCancelled);
 
     return () => {
       socket.off(SOCKET_EVENTS.BID_RECEIVED, handleBidReceived);
       socket.off(SOCKET_EVENTS.ORDER_ASSIGNED, handleAssigned);
       socket.off(SOCKET_EVENTS.LOCATION_CLIENT_FEED, handleLocationFeed);
       socket.off(SOCKET_EVENTS.ORDER_COMPLETED, handleCompleted);
+      socket.off(SOCKET_EVENTS.ORDER_CANCELLED, handleCancelled);
     };
   }, [activeOrder]);
 
+  // 4. Crear Orden
   const handleCreateOrder = async () => {
     setLoading(true);
     try {
@@ -105,6 +225,42 @@ export default function ClientHomeScreen() {
     }
   };
 
+  // 5. Cancelar Orden
+  const handleCancelOrder = async () => {
+    if (!activeOrder) return;
+
+    const executeCancel = async () => {
+      setCancelling(true);
+      try {
+        await api.post(`/api/orders/${activeOrder.id}/cancel`);
+        Alert.alert('Pedido Cancelado', 'Tu solicitud ha sido cancelada exitosamente.');
+        setActiveOrder(null);
+        setIncomingBids([]);
+        setCourierLocation(null);
+      } catch (err: unknown) {
+        Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo cancelar el pedido');
+      } finally {
+        setCancelling(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Estás seguro de que deseas cancelar este pedido?')) {
+        await executeCancel();
+      }
+    } else {
+      Alert.alert(
+        'Confirmar Cancelación',
+        '¿Deseas cancelar esta solicitud de servicio?',
+        [
+          { text: 'No, continuar', style: 'cancel' },
+          { text: 'Sí, Cancelar', style: 'destructive', onPress: executeCancel },
+        ]
+      );
+    }
+  };
+
+  // 6. Aceptar Oferta de Conductor
   const handleAcceptBid = async (bidId: string) => {
     if (!activeOrder) return;
     try {
@@ -117,18 +273,52 @@ export default function ClientHomeScreen() {
     }
   };
 
+  // 7. Cerrar Sesión
+  const handleLogout = () => {
+    logout();
+    router.replace('/(auth)/login');
+  };
+
   return (
     <View className="flex-1 bg-slate-50">
+      {/* Barra de Encabezado Superior con Saludo y Cerrar Sesión */}
+      <View className="bg-secondary px-5 py-3 pt-12 flex-row items-center justify-between shadow-md z-20">
+        <View>
+          <Text className="text-white font-black text-base tracking-tight">
+            ⚡ Plataforma Logística
+          </Text>
+          <Text className="text-xs text-slate-300">
+            Hola, {user?.fullName?.split(' ')[0] || 'Cliente'} 👋
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={handleLogout}
+          className="bg-white/10 hover:bg-white/20 px-3.5 py-1.5 rounded-full border border-white/20 flex-row items-center gap-1.5"
+        >
+          <Text className="text-white font-semibold text-xs">🚪 Cerrar Sesión</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Mitad Superior: Mapa Universal */}
-      <View className="h-[40%] w-full relative">
+      <View className="h-[42%] w-full relative">
         <UniversalMap
           center={originPoint}
           origin={originPoint}
-          destination={destPoint}
+          destination={activeOrder ? destPoint : null}
           courierLocation={courierLocation}
+          userLocation={userLocation}
+          nearbyCouriers={nearbyCouriers}
+          onMapClick={(point) => {
+            if (!activeOrder) {
+              setDestPoint(point);
+              setDestAddress(`Punto seleccionado (${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)})`);
+            }
+          }}
         />
+
         {activeOrder && (
-          <View className="absolute top-12 right-4 z-10">
+          <View className="absolute top-4 right-4 z-10">
             <SosButton orderId={activeOrder.id} />
           </View>
         )}
@@ -173,9 +363,11 @@ export default function ClientHomeScreen() {
                   Contraofertas Recibidas ({incomingBids.length})
                 </Text>
                 {incomingBids.length === 0 ? (
-                  <Text className="text-xs text-slate-400 py-4 text-center">
-                    Transmitiendo tu pedido a conductores cercanos...
-                  </Text>
+                  <View className="py-4 items-center">
+                    <Text className="text-xs text-slate-400 text-center">
+                      Transmitiendo tu pedido a conductores en la zona...
+                    </Text>
+                  </View>
                 ) : (
                   incomingBids.map((bid) => (
                     <View
@@ -207,25 +399,50 @@ export default function ClientHomeScreen() {
                     </View>
                   ))
                 )}
+
+                {/* BOTÓN CANCELAR ORDEN SI NO SE HA ASIGNADO */}
+                <Button
+                  title={cancelling ? 'Cancelando...' : '❌ Cancelar Solicitud'}
+                  variant="outline"
+                  onPress={handleCancelOrder}
+                  loading={cancelling}
+                  className="mt-4 border-rose-300 text-rose-600"
+                />
               </View>
             )}
 
             {/* Botón de Chat si ya está asignado */}
             {activeOrder.status !== 'SEARCHING' && (
-              <Button
-                title="💬 Abrir Chat con el Conductor"
-                variant="secondary"
-                onPress={() => setChatVisible(true)}
-                className="mt-3"
-              />
+              <View className="gap-2 mt-3">
+                <Button
+                  title="💬 Abrir Chat con el Conductor"
+                  variant="secondary"
+                  onPress={() => setChatVisible(true)}
+                />
+                <Button
+                  title="❌ Cancelar Servicio"
+                  variant="outline"
+                  onPress={handleCancelOrder}
+                  loading={cancelling}
+                  className="border-rose-300 text-rose-600"
+                />
+              </View>
             )}
           </View>
         ) : (
           // Formulario de Solicitud de Servicio
           <View className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm mb-6">
-            <Text className="text-xl font-extrabold text-slate-900 mb-4">
-              ¿Qué necesitas hoy?
-            </Text>
+            <View className="flex-row items-center justify-between mb-4">
+              <Text className="text-xl font-extrabold text-slate-900">
+                ¿Qué necesitas hoy?
+              </Text>
+              <View className="bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex-row items-center gap-1.5">
+                <View className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <Text className="text-[11px] font-bold text-emerald-700">
+                  {nearbyCouriers.length} conductores cerca
+                </Text>
+              </View>
+            </View>
 
             {/* Selector de Servicio */}
             <View className="flex-row gap-2 mb-5">
@@ -267,13 +484,14 @@ export default function ClientHomeScreen() {
               label="Punto de Entrega / Destino"
               value={destAddress}
               onChangeText={setDestAddress}
+              placeholder="Escribe o toca en el mapa para ubicar"
             />
 
             {serviceType === 'ERRAND' ? (
               <>
                 <Input
                   label="Lista de Compras o Encargo"
-                  placeholder="Ej. Leche, pan y medicina en la farmacia de la esquina"
+                  placeholder="Ej. Leche, pan y medicina en la farmacia"
                   value={description}
                   onChangeText={setDescription}
                 />
@@ -325,7 +543,7 @@ export default function ClientHomeScreen() {
       <RatingModal
         visible={ratingVisible}
         targetName="tu conductor"
-        onSubmit={async (score, tags, comment) => {
+        onSubmit={async () => {
           Alert.alert('¡Gracias!', 'Tu calificación ayuda a mantener segura la plataforma.');
         }}
         onClose={() => setRatingVisible(false)}
