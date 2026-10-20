@@ -1,0 +1,31 @@
+import http from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+import { app } from './app';
+import { env } from './config/env';
+
+export const httpServer = http.createServer(app);
+
+// Inicialización de Socket.io con CORS para clientes móviles y PWA
+export const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+  pingInterval: 10000,
+  pingTimeout: 5000,
+});
+
+io.on('connection', (socket) => {
+  console.log(`🔌 Cliente conectado vía WebSocket: ${socket.id}`);
+
+  socket.on('disconnect', (reason) => {
+    console.log(`❌ Cliente desconectado (${socket.id}): ${reason}`);
+  });
+});
+
+if (process.env.NODE_ENV !== 'test') {
+  httpServer.listen(env.PORT, () => {
+    console.log(`🚀 Servidor backend escuchando en http://localhost:${env.PORT}`);
+    console.log(`📡 Socket.io activo en el mismo puerto`);
+  });
+}
