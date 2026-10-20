@@ -11,3 +11,4 @@ yarn-error.log*
 Thumbs.db
 coverage/
 *.tsbuildinfo
+MANUAL_DESPLIEGUE.md
