@@ -32,5 +32,15 @@ services:
       timeout: 5s
       retries: 3
 
+  web:
+    build:
+      context: .
+      dockerfile: packages/app-universal/Dockerfile
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
 volumes:
   uploads_data:
