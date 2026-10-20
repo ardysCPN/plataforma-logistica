@@ -5,10 +5,16 @@ import { useAuthStore } from '../stores/authStore';
 
 export default function IndexScreen() {
   const router = useRouter();
-  const { user, token } = useAuthStore();
+  const { user, token, isInitialized, initializeAuth } = useAuthStore();
 
   useEffect(() => {
-    // Redirección inteligente basada en sesión y rol
+    initializeAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    // Redirección inteligente basada en sesión restaurada y rol
     const timeout = setTimeout(() => {
       if (!token || !user) {
         router.replace('/(auth)/login');
@@ -19,10 +25,11 @@ export default function IndexScreen() {
       } else if (user.role === 'ADMIN') {
         router.replace('/(admin)');
       }
-    }, 500);
+    }, 150);
 
     return () => clearTimeout(timeout);
-  }, [user, token]);
+  }, [isInitialized, user, token]);
+
 
   return (
     <View className="flex-1 bg-secondary items-center justify-center p-6">

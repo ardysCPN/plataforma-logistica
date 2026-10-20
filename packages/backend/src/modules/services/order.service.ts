@@ -382,4 +382,209 @@ export const orderService = {
       createdAt: row.createdAt,
     }));
   },
+
+  async getMyOrderHistory(userId: string, role: string) {
+    const isCourier = role === 'COURIER';
+    const query = `
+      SELECT so.id, so.service_type as "serviceType", so.status,
+             so.origin_address as "originAddress", so.destination_address as "destinationAddress",
+             COALESCE(so.agreed_price, so.offered_price) as price,
+             so.commission_amount as "commissionAmount",
+             so.created_at as "createdAt", so.completed_at as "completedAt",
+             u_client.full_name as "clientName",
+             u_courier.full_name as "courierName",
+             cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate",
+             rating_received.score as "ratingReceived",
+             rating_received.comment as "commentReceived"
+      FROM service_orders so
+      JOIN users u_client ON so.client_id = u_client.id
+      LEFT JOIN users u_courier ON so.courier_id = u_courier.id
+      LEFT JOIN courier_profiles cp ON u_courier.id = cp.user_id
+      LEFT JOIN order_ratings rating_received ON rating_received.order_id = so.id AND rating_received.rated_id = $1
+      WHERE ${isCourier ? 'so.courier_id = $1' : 'so.client_id = $1'}
+      ORDER BY so.created_at DESC
+      LIMIT 50
+    `;
+
+    const res = await db.query(query, [userId]);
+    return res.rows.map((r: any) => ({
+      id: r.id,
+      serviceType: r.serviceType,
+      status: r.status,
+      originAddress: r.originAddress,
+      destinationAddress: r.destinationAddress,
+      price: Number(r.price),
+      commissionAmount: Number(r.commissionAmount || 0),
+      createdAt: r.createdAt,
+      completedAt: r.completedAt,
+      counterpartName: isCourier ? r.clientName : (r.courierName || 'Pendiente'),
+      vehicleType: r.vehicleType,
+      vehiclePlate: r.vehiclePlate,
+      ratingReceived: r.ratingReceived ? Number(r.ratingReceived) : null,
+      commentReceived: r.commentReceived || null,
+    }));
+  },
+
+  async rateOrder(raterId: string, orderId: string, score: number, comment?: string, feedbackTags?: string[]) {
+    if (score < 1 || score > 5) {
+      throw new Error('La calificación debe estar entre 1 y 5 estrellas');
+    }
+
+    const orderRes = await db.query(
+      `SELECT client_id as "clientId", courier_id as "courierId", status FROM service_orders WHERE id = $1`,
+      [orderId]
+    );
+
+    if (orderRes.rows.length === 0) {
+      throw new Error('Orden no encontrada');
+    }
+
+    const order = orderRes.rows[0];
+    if (order.status !== 'COMPLETED') {
+      throw new Error('Solo se pueden calificar servicios completados');
+    }
+
+    let ratedId: string;
+    if (order.clientId === raterId) {
+      if (!order.courierId) throw new Error('No hay conductor asignado');
+      ratedId = order.courierId;
+    } else if (order.courierId === raterId) {
+      ratedId = order.clientId;
+    } else {
+      throw new Error('No estás autorizado para calificar este servicio');
+    }
+
+    // Insertar o actualizar calificación
+    await db.query(
+      `INSERT INTO order_ratings (order_id, rater_id, rated_id, score, comment, feedback_tags)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (order_id, rater_id)
+       DO UPDATE SET score = EXCLUDED.score, comment = EXCLUDED.comment, feedback_tags = EXCLUDED.feedback_tags`,
+      [orderId, raterId, ratedId, score, comment || null, feedbackTags || []]
+    );
+
+    // Recalcular promedio de estrellas
+    const statsRes = await db.query(
+      `SELECT AVG(score) as "avgScore", COUNT(id) as "totalCount"
+       FROM order_ratings WHERE rated_id = $1`,
+      [ratedId]
+    );
+
+    const avg = Number(statsRes.rows[0].avgScore || 5.0).toFixed(2);
+    const count = Number(statsRes.rows[0].totalCount || 1);
+
+    await db.query(
+      `UPDATE users SET rating_avg = $1, rating_count = $2 WHERE id = $3`,
+      [avg, count, ratedId]
+    );
+
+    return {
+      success: true,
+      score,
+      ratedId,
+      message: '¡Calificación registrada exitosamente!',
+    };
+  },
+
+  async createPqrTicket(reporterId: string, orderId: string, category: string, description: string) {
+    if (!description || description.trim().length < 5) {
+      throw new Error('Por favor detalla la descripción del incidente (mínimo 5 caracteres)');
+    }
+
+    const orderRes = await db.query(
+      `SELECT client_id as "clientId", courier_id as "courierId" FROM service_orders WHERE id = $1`,
+      [orderId]
+    );
+
+    if (orderRes.rows.length === 0) {
+      throw new Error('Orden no encontrada');
+    }
+
+    const order = orderRes.rows[0];
+    let reportedUserId: string;
+    if (order.clientId === reporterId) {
+      if (!order.courierId) throw new Error('No hay conductor asignado a este servicio');
+      reportedUserId = order.courierId;
+    } else if (order.courierId === reporterId) {
+      reportedUserId = order.clientId;
+    } else {
+      throw new Error('No estás autorizado para reportar incidencias sobre esta orden');
+    }
+
+    const validCategories = [
+      'UNCOMPLETED_DELIVERY',
+      'DAMAGE_OR_LOSS',
+      'PRICE_DISPUTE',
+      'INAPPROPRIATE_BEHAVIOR',
+      'SECURITY_CONCERN',
+      'OTHER',
+    ];
+
+    const safeCategory = validCategories.includes(category) ? category : 'OTHER';
+
+    const res = await db.query(
+      `INSERT INTO pqr_tickets (order_id, reporter_id, reported_user_id, category, description, status)
+       VALUES ($1, $2, $3, $4, $5, 'OPEN')
+       RETURNING id, category, status, created_at as "createdAt"`,
+      [orderId, reporterId, reportedUserId, safeCategory, description]
+    );
+
+    return {
+      ticketId: res.rows[0].id,
+      category: res.rows[0].category,
+      status: res.rows[0].status,
+      message: 'Ticket de PQR radicado con éxito. Nuestro equipo de seguridad y soporte lo atenderá.',
+    };
+  },
+
+  async getPublicTrackingInfo(orderId: string) {
+    const query = `
+      SELECT so.id, so.service_type as "serviceType", so.status,
+             so.origin_address as "originAddress",
+             ST_Y(so.origin_point::geometry) as "originLat", ST_X(so.origin_point::geometry) as "originLng",
+             so.destination_address as "destinationAddress",
+             ST_Y(so.destination_point::geometry) as "destLat", ST_X(so.destination_point::geometry) as "destLng",
+             so.agreed_price as "agreedPrice", so.created_at as "createdAt",
+             u.full_name as "courierFullName", u.rating_avg as "ratingAvg",
+             cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate",
+             ST_Y(cp.current_location::geometry) as "courierLat", ST_X(cp.current_location::geometry) as "courierLng",
+             cp.current_bearing as "courierBearing"
+      FROM service_orders so
+      LEFT JOIN users u ON so.courier_id = u.id
+      LEFT JOIN courier_profiles cp ON u.id = cp.user_id
+      WHERE so.id = $1
+    `;
+
+    const res = await db.query(query, [orderId]);
+    if (res.rows.length === 0) {
+      throw new Error('Servicio no encontrado');
+    }
+
+    const r = res.rows[0];
+    return {
+      orderId: r.id,
+      serviceType: r.serviceType,
+      status: r.status,
+      originAddress: r.originAddress,
+      originPoint: { latitude: Number(r.originLat), longitude: Number(r.originLng) },
+      destinationAddress: r.destinationAddress,
+      destinationPoint: { latitude: Number(r.destLat), longitude: Number(r.destLng) },
+      agreedPrice: Number(r.agreedPrice || 0),
+      createdAt: r.createdAt,
+      courier: r.courierFullName ? {
+        firstName: r.courierFullName.split(' ')[0],
+        ratingAvg: Number(r.ratingAvg || 5.0),
+        vehicleType: r.vehicleType,
+        vehiclePlate: r.vehiclePlate,
+        location: r.courierLat ? {
+          latitude: Number(r.courierLat),
+          longitude: Number(r.courierLng),
+          bearing: Number(r.courierBearing || 0),
+        } : null,
+      } : null,
+    };
+  },
 };
+
+
+

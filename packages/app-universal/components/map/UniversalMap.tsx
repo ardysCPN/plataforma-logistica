@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Platform, Text, TouchableOpacity } from 'react-native';
+import { View, Platform, Text, TouchableOpacity, Linking } from 'react-native';
 import { GeoPoint } from '@plataforma/shared';
+import { routingService, StreetRouteResult } from '../../services/routingService';
 
 export interface NearbyCourierMarker {
+
   id: string;
   latitude: number;
   longitude: number;
@@ -25,11 +27,13 @@ interface UniversalMapProps {
   zoom?: number;
   origin?: GeoPoint | null;
   destination?: GeoPoint | null;
+  intermediateStops?: GeoPoint[];
   routeCoordinates?: [number, number][];
   courierLocation?: { latitude: number; longitude: number; bearing?: number } | null;
   userLocation?: GeoPoint | null;
   nearbyCouriers?: NearbyCourierMarker[];
   orderMarkers?: OrderMarker[];
+  darkMode?: boolean;
   onMapClick?: (point: GeoPoint) => void;
   className?: string;
 }
@@ -39,11 +43,13 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
   zoom = 14,
   origin,
   destination,
+  intermediateStops = [],
   routeCoordinates = [],
   courierLocation,
   userLocation,
   nearbyCouriers = [],
   orderMarkers = [],
+  darkMode = false,
   onMapClick,
   className = '',
 }) => {
@@ -51,6 +57,39 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [streetRoute, setStreetRoute] = useState<StreetRouteResult | null>(null);
+
+  // Obtener ruta real por calles mediante OSRM (soporta paradas intermedias múltiples)
+  useEffect(() => {
+    let isCurrent = true;
+    if (origin && destination) {
+      if (routeCoordinates && routeCoordinates.length > 0) {
+        setStreetRoute({
+          coordinates: routeCoordinates,
+          distanceKm: 0,
+          durationMinutes: 0,
+        });
+      } else {
+        routingService.getStreetRoute(origin, destination, intermediateStops).then((res) => {
+          if (isCurrent) {
+            setStreetRoute(res);
+          }
+        });
+      }
+    } else {
+      setStreetRoute(null);
+    }
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    origin?.latitude,
+    origin?.longitude,
+    destination?.latitude,
+    destination?.longitude,
+    JSON.stringify(intermediateStops),
+    routeCoordinates,
+  ]);
 
   // Asegurar que la hoja de estilos de MapLibre esté presente en el navegador
   useEffect(() => {
@@ -76,6 +115,18 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
       try {
         const maplibregl = (await import('maplibre-gl')).default;
 
+        const tiles = darkMode
+          ? [
+              'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+            ]
+          : [
+              'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+              'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+              'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            ];
+
         if (!mapInstanceRef.current && mapContainerRef.current) {
           const map = new maplibregl.Map({
             container: mapContainerRef.current as HTMLElement,
@@ -84,11 +135,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
               sources: {
                 'osm-raster-tiles': {
                   type: 'raster',
-                  tiles: [
-                    'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  ],
+                  tiles,
                   tileSize: 256,
                   attribution: '© OpenStreetMap contributors',
                 },
@@ -122,7 +169,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
           mapInstanceRef.current.setCenter([center.longitude, center.latitude]);
         }
       } catch (err) {
-        console.warn('Error inicializando mapa OSM MapLibre:', err);
+        console.warn('Error inicializando MapLibre:', err);
       }
     };
 
@@ -130,12 +177,35 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
 
     return () => {
       isMounted = false;
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
     };
-  }, []);
+  }, [center.latitude, center.longitude, zoom]);
+
+  // Actualizar teselas dinámicamente si cambia darkMode
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapLoaded) return;
+    const map = mapInstanceRef.current;
+    const tiles = darkMode
+      ? [
+          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+          'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        ]
+      : [
+          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        ];
+
+    try {
+      const source = map.getSource('osm-raster-tiles');
+      if (source && typeof source.setTiles === 'function') {
+        source.setTiles(tiles);
+      }
+    } catch {
+      // Ignorar fallback
+    }
+  }, [darkMode, mapLoaded]);
+
 
   // Sincronizar centro cuando cambie center
   useEffect(() => {
@@ -236,6 +306,32 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         updateOrCreateMarker('destination', null, '');
       }
 
+      // 3.1 Marcadores de Paradas Intermedias (Multi-Drop)
+      const currentStopKeys = new Set((intermediateStops || []).map((_, idx) => `stop_${idx}`));
+      Object.keys(markersRef.current).forEach((k) => {
+        if (k.startsWith('stop_') && !currentStopKeys.has(k)) {
+          markersRef.current[k].remove();
+          delete markersRef.current[k];
+        }
+      });
+
+      (intermediateStops || []).forEach((stop, idx) => {
+        const key = `stop_${idx}`;
+        updateOrCreateMarker(
+          key,
+          [stop.longitude, stop.latitude],
+          `
+          <div style="display: flex; flex-direction: column; align-items: center; transform: translate(0, -10px);">
+            <div style="background: #F59E0B; color: white; font-weight: 800; font-size: 11px; padding: 4px 8px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.25); display: flex; align-items: center; gap: 4px; border: 1.5px solid #FFFFFF;">
+              <span>🟡</span> <span>Parada ${idx + 1}</span>
+            </div>
+            <div style="width: 2px; height: 8px; background: #F59E0B;"></div>
+          </div>
+          `
+        );
+      });
+
+
       // 4. Conductor Asignado en Vivo
       if (courierLocation) {
         updateOrCreateMarker(
@@ -309,22 +405,24 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         );
       });
 
-      // 7. Trazar Línea de Ruta (Route Polyline)
-      if (origin && destination) {
-        const coordinates =
-          routeCoordinates.length > 0
-            ? routeCoordinates
-            : [
-                [origin.longitude, origin.latitude],
-                [destination.longitude, destination.latitude],
-              ];
+      // 7. Trazar Línea de Ruta Real por Calles (OSRM OpenStreetMap Engine)
+      const activeCoordinates =
+        streetRoute && streetRoute.coordinates.length > 0
+          ? streetRoute.coordinates
+          : origin && destination
+          ? [
+              [origin.longitude, origin.latitude],
+              [destination.longitude, destination.latitude],
+            ]
+          : [];
 
+      if (origin && destination && activeCoordinates.length > 0) {
         const routeData = {
           type: 'Feature',
           properties: {},
           geometry: {
             type: 'LineString',
-            coordinates: coordinates,
+            coordinates: activeCoordinates,
           },
         };
 
@@ -345,9 +443,9 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
               'line-cap': 'round',
             },
             paint: {
-              'line-color': '#FF6B00',
-              'line-width': 5,
-              'line-opacity': 0.85,
+              'line-color': '#2563EB',
+              'line-width': 5.5,
+              'line-opacity': 0.88,
             },
           });
         }
@@ -373,7 +471,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     userLocation?.longitude,
     nearbyCouriers,
     orderMarkers,
-    routeCoordinates,
+    streetRoute,
     mapLoaded,
   ]);
 
@@ -400,6 +498,29 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     }
   };
 
+  const handleOpenGoogleMaps = () => {
+    if (destination) {
+      const url = routingService.getGoogleMapsNavUrl(destination, origin);
+      if (Platform.OS === 'web') {
+        window.open(url, '_blank');
+      } else {
+        Linking.openURL(url).catch(() => {});
+      }
+    }
+  };
+
+  const handleOpenWaze = () => {
+    if (destination) {
+      const url = routingService.getWazeNavUrl(destination);
+      if (Platform.OS === 'web') {
+        window.open(url, '_blank');
+      } else {
+        Linking.openURL(url).catch(() => {});
+      }
+    }
+  };
+
+
   return (
     <View className={`w-full h-full relative overflow-hidden bg-slate-100 ${className}`}>
       {Platform.OS === 'web' ? (
@@ -413,35 +534,66 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         </View>
       )}
 
-      {/* Indicador superior OSM libre */}
-      <View className="absolute top-4 left-4 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200 shadow-md flex-row items-center gap-2 z-10">
-        <View className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-        <Text className="text-xs font-bold text-slate-800">OpenStreetMap Live</Text>
+      {/* Indicador superior OSM libre y Estado de Ruta */}
+      <View className="absolute top-4 left-4 right-4 flex-row items-center justify-between pointer-events-none z-10">
+        <View className={`${darkMode ? 'bg-slate-900/95 border-slate-700' : 'bg-white/95 border-slate-200'} backdrop-blur-md px-3 py-1.5 rounded-full border shadow-md flex-row items-center gap-2 pointer-events-auto`}>
+          <View className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+          <Text className={`text-xs font-bold ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+            {darkMode ? '🌙 OSM Dark Mode' : 'OpenStreetMap Live'}
+          </Text>
+        </View>
+
+        {streetRoute && streetRoute.distanceKm > 0 && (
+          <View className="bg-slate-900/90 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-lg flex-row items-center gap-1.5 pointer-events-auto">
+            <Text className="text-xs font-bold text-white">
+              🚗 {streetRoute.distanceKm} km • ~{streetRoute.durationMinutes} min
+            </Text>
+          </View>
+        )}
       </View>
+
+      {/* Botones de Navegación Externa Waze / Google Maps si hay destino */}
+      {destination && (
+        <View className="absolute top-14 right-4 flex-row gap-2 z-10">
+          <TouchableOpacity
+            onPress={handleOpenGoogleMaps}
+            className={`${darkMode ? 'bg-slate-900/95 border-slate-700' : 'bg-white/95 border-slate-200'} backdrop-blur-md px-3 py-1.5 rounded-full border shadow-md flex-row items-center gap-1 active:opacity-80`}
+          >
+            <Text className="text-xs font-bold text-blue-400">🗺️ Google Maps</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleOpenWaze}
+            className={`${darkMode ? 'bg-slate-900/95 border-slate-700' : 'bg-white/95 border-slate-200'} backdrop-blur-md px-3 py-1.5 rounded-full border shadow-md flex-row items-center gap-1 active:opacity-80`}
+          >
+            <Text className="text-xs font-bold text-cyan-400">🚙 Waze</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Controles de Mapa Flotantes */}
       <View className="absolute bottom-5 right-4 gap-2 z-10">
         <TouchableOpacity
           onPress={handleRecenter}
-          className="w-11 h-11 bg-white rounded-full items-center justify-center shadow-lg border border-slate-200 active:bg-slate-100"
+          className={`w-11 h-11 ${darkMode ? 'bg-slate-800 border-slate-700 active:bg-slate-700' : 'bg-white border-slate-200 active:bg-slate-100'} rounded-full items-center justify-center shadow-lg border`}
         >
           <Text className="text-lg">🎯</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => handleZoom(1)}
-          className="w-11 h-11 bg-white rounded-full items-center justify-center shadow-lg border border-slate-200 active:bg-slate-100"
+          className={`w-11 h-11 ${darkMode ? 'bg-slate-800 border-slate-700 active:bg-slate-700' : 'bg-white border-slate-200 active:bg-slate-100'} rounded-full items-center justify-center shadow-lg border`}
         >
-          <Text className="text-lg font-bold text-slate-800">＋</Text>
+          <Text className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>＋</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => handleZoom(-1)}
-          className="w-11 h-11 bg-white rounded-full items-center justify-center shadow-lg border border-slate-200 active:bg-slate-100"
+          className={`w-11 h-11 ${darkMode ? 'bg-slate-800 border-slate-700 active:bg-slate-700' : 'bg-white border-slate-200 active:bg-slate-100'} rounded-full items-center justify-center shadow-lg border`}
         >
-          <Text className="text-lg font-bold text-slate-800">－</Text>
+          <Text className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>－</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 };
+

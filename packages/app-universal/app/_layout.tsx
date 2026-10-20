@@ -1,9 +1,15 @@
-import React from 'react';
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useAuthStore } from '../stores/authStore';
 import '../global.css';
+
 export default function RootLayout() {
+  useEffect(() => {
+    useAuthStore.getState().initializeAuth();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
@@ -13,7 +19,9 @@ export default function RootLayout() {
         <Stack.Screen name="(client)" options={{ headerShown: false }} />
         <Stack.Screen name="(courier)" options={{ headerShown: false }} />
         <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+        <Stack.Screen name="track/[orderId]" options={{ headerShown: false }} />
       </Stack>
+
     </SafeAreaProvider>
   );
 }

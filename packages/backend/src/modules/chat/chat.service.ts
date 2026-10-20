@@ -5,7 +5,7 @@ export const chatService = {
   async saveMessage(senderId: string, input: SendChatMessageInput): Promise<ChatMessage> {
     // 1. Validar que la orden exista y el remitente participe en ella
     const orderRes = await db.query(
-      `SELECT client_id as "clientId", courier_id as "courierId" FROM service_orders WHERE id = $1`,
+      `SELECT client_id as "clientId", courier_id as "courierId", status FROM service_orders WHERE id = $1`,
       [input.orderId]
     );
 
@@ -17,6 +17,12 @@ export const chatService = {
     if (order.clientId !== senderId && order.courierId !== senderId) {
       throw new Error('No estás autorizado para enviar mensajes en este servicio');
     }
+
+    // Regla de privacidad Uber/InDrive: El conductor no puede iniciar nuevos mensajes si el pedido ya fue finalizado o cancelado
+    if ((order.status === 'COMPLETED' || order.status === 'CANCELLED') && senderId === order.courierId) {
+      throw new Error('El servicio ha finalizado. Por seguridad y privacidad del usuario, el chat se encuentra en modo solo lectura.');
+    }
+
 
     // 2. Persistir mensaje
     const res = await db.query<ChatMessage>(

@@ -99,4 +99,63 @@ export const orderController = {
       res.status(500).json({ error: message });
     }
   },
+
+  async getHistory(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const history = await orderService.getMyOrderHistory(req.user.id, req.user.role);
+      res.json(history);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al obtener historial';
+      res.status(500).json({ error: message });
+    }
+  },
+
+  async rateOrder(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const { orderId } = req.params;
+      const { score, comment, feedbackTags } = req.body;
+      const result = await orderService.rateOrder(req.user.id, orderId, Number(score), comment, feedbackTags);
+      res.json(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al calificar el servicio';
+      res.status(400).json({ error: message });
+    }
+  },
+
+  async createPqr(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const { orderId } = req.params;
+      const { category, description } = req.body;
+      const result = await orderService.createPqrTicket(req.user.id, orderId, category, description);
+      res.status(201).json(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error creando ticket PQR';
+      res.status(400).json({ error: message });
+    }
+  },
+
+  async getPublicTrack(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const tracking = await orderService.getPublicTrackingInfo(id);
+      res.json(tracking);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al consultar rastreo';
+      res.status(404).json({ error: message });
+    }
+  },
 };
+
+

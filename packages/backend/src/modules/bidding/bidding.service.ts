@@ -1,11 +1,14 @@
 import { db } from '../../config/database';
 import { CreateBidInput, AcceptBidInput, OrderBid } from '@plataforma/shared';
+import { socketEvents } from '../../sockets/socket.manager';
 
 export const biddingService = {
   async submitBid(courierId: string, input: CreateBidInput) {
-    // 1. Validar que el conductor esté ACTIVO y tenga saldo positivo en billetera
+    // 1. Validar que el conductor exista y no esté suspendido/bloqueado
     const courierRes = await db.query(
-      `SELECT u.status, u.wallet_balance as "walletBalance", cp.active_orders_count as "activeOrdersCount"
+      `SELECT u.full_name as "fullName", u.status, u.wallet_balance as "walletBalance",
+              u.rating_avg as "ratingAvg", cp.vehicle_type as "vehicleType",
+              cp.vehicle_plate as "vehiclePlate", cp.active_orders_count as "activeOrdersCount"
        FROM users u
        JOIN courier_profiles cp ON u.id = cp.user_id
        WHERE u.id = $1`,
@@ -17,12 +20,13 @@ export const biddingService = {
     }
 
     const courier = courierRes.rows[0];
-    if (courier.status !== 'ACTIVE') {
+    if (courier.status === 'BLOCKED' || courier.status === 'SUSPENDED') {
       throw new Error('Tu cuenta no está activa para ofertar');
     }
 
-    if (Number(courier.walletBalance) <= 0) {
-      throw new Error('Saldo insuficiente en tu billetera. Recarga saldo para seguir ofertando.');
+    // Permitir ofertar con margen de comisión hasta saldo negativo moderado (-$10,000 COP)
+    if (Number(courier.walletBalance) < -10000) {
+      throw new Error('Límite de comisiones superado en tu billetera. Recarga saldo para seguir ofertando.');
     }
 
     if (Number(courier.activeOrdersCount) >= 3) {
@@ -31,7 +35,7 @@ export const biddingService = {
 
     // 2. Validar que la orden esté en estado SEARCHING
     const orderRes = await db.query(
-      `SELECT id, status, service_type as "serviceType" FROM service_orders WHERE id = $1`,
+      `SELECT id, client_id as "clientId", status, service_type as "serviceType" FROM service_orders WHERE id = $1`,
       [input.orderId]
     );
 
@@ -50,10 +54,26 @@ export const biddingService = {
        RETURNING id, order_id as "orderId", courier_id as "courierId",
                  bid_amount as "bidAmount", eta_minutes as "etaMinutes",
                  status, created_at as "createdAt"`,
-      [input.orderId, courierId, input.bidAmount, input.etaMinutes || null]
+      [input.orderId, courierId, input.bidAmount, input.etaMinutes || 10]
     );
 
-    return res.rows[0];
+    const newBid = res.rows[0];
+
+    // Emitir Socket en vivo directamente al cliente que publicó la orden
+    socketEvents.emitBidReceived(orderRes.rows[0].clientId, {
+      bidId: newBid.id,
+      orderId: input.orderId,
+      courierId,
+      courierName: courier.fullName,
+      courierRating: Number(courier.ratingAvg || 5.0),
+      vehicleType: courier.vehicleType,
+      vehiclePlate: courier.vehiclePlate,
+      bidAmount: Number(input.bidAmount),
+      etaMinutes: input.etaMinutes || 10,
+      createdAt: newBid.createdAt,
+    });
+
+    return newBid;
   },
 
   async acceptBid(clientId: string, input: AcceptBidInput) {
@@ -118,6 +138,47 @@ export const biddingService = {
         [bid.courierId]
       );
 
+      // Obtener datos detallados para el evento de Sockets
+      const detailsRes = await client.query(
+        `SELECT u.full_name as "courierName", u.phone as "courierPhone", u.rating_avg as "ratingAvg",
+                cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate",
+                uc.full_name as "clientName", uc.phone as "clientPhone"
+         FROM users u
+         JOIN courier_profiles cp ON u.id = cp.user_id
+         CROSS JOIN users uc
+         WHERE u.id = $1 AND uc.id = $2`,
+        [bid.courierId, clientId]
+      );
+
+      const details = detailsRes.rows[0] || {};
+
+      const assignedPayload = {
+        orderId: input.orderId,
+        status: 'ACCEPTED' as const,
+        courier: {
+          id: bid.courierId,
+          fullName: details.courierName || 'Conductor',
+          phone: details.courierPhone || '',
+          vehicleType: details.vehicleType || 'MOTO',
+          vehiclePlate: details.vehiclePlate || '',
+          ratingAvg: Number(details.ratingAvg || 5.0),
+        },
+        client: {
+          id: clientId,
+          fullName: details.clientName || 'Cliente',
+          phone: details.clientPhone || '',
+        },
+        agreedPrice: Number(bid.bidAmount),
+      };
+
+
+      socketEvents.emitOrderAssigned(input.orderId, assignedPayload);
+      socketEvents.emitOrderStatusChange(input.orderId, {
+        orderId: input.orderId,
+        newStatus: 'ACCEPTED',
+        updatedAt: new Date().toISOString(),
+      });
+
       return {
         orderId: input.orderId,
         courierId: bid.courierId,
@@ -129,30 +190,33 @@ export const biddingService = {
 
   async claimErrandAtomic(courierId: string, orderId: string) {
     return db.transaction(async (client) => {
-      // 1. Validar conductor activo y con saldo
+      // 1. Validar conductor
       const courierRes = await client.query(
-        `SELECT u.status, u.wallet_balance as "walletBalance", cp.active_orders_count as "activeOrdersCount"
+        `SELECT u.status, u.wallet_balance as "walletBalance", cp.active_orders_count as "activeOrdersCount",
+                u.full_name as "fullName", u.phone, u.rating_avg as "ratingAvg",
+                cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate"
          FROM users u
          JOIN courier_profiles cp ON u.id = cp.user_id
          WHERE u.id = $1`,
         [courierId]
       );
 
-      if (courierRes.rows.length === 0 || courierRes.rows[0].status !== 'ACTIVE') {
-        throw new Error('Conductor no activo para tomar mandados');
+      if (courierRes.rows.length === 0) {
+        throw new Error('Conductor no encontrado');
       }
 
-      if (Number(courierRes.rows[0].walletBalance) <= 0) {
-        throw new Error('Saldo insuficiente en billetera');
+      const courier = courierRes.rows[0];
+      if (courier.status === 'BLOCKED' || courier.status === 'SUSPENDED') {
+        throw new Error('Conductor no autorizado');
       }
 
-      if (Number(courierRes.rows[0].activeOrdersCount) >= 3) {
+      if (Number(courier.activeOrdersCount) >= 3) {
         throw new Error('Límite de pedidos activos alcanzado');
       }
 
       // 2. Bloqueo atómico exclusivo de la fila de la orden
       const orderRes = await client.query(
-        `SELECT id, service_type as "serviceType", status, offered_price as "offeredPrice"
+        `SELECT id, client_id as "clientId", service_type as "serviceType", status, offered_price as "offeredPrice"
          FROM service_orders
          WHERE id = $1 FOR UPDATE`,
         [orderId]
@@ -186,6 +250,39 @@ export const biddingService = {
         [courierId]
       );
 
+      // Obtener datos del cliente para notificar
+      const clientRes = await client.query(
+        `SELECT full_name as "clientName", phone as "clientPhone" FROM users WHERE id = $1`,
+        [order.clientId]
+      );
+      const clientRow = clientRes.rows[0] || {};
+
+      socketEvents.emitOrderAssigned(orderId, {
+        orderId,
+        status: 'ACCEPTED' as const,
+        courier: {
+          id: courierId,
+          fullName: courier.fullName,
+          phone: courier.phone,
+          vehicleType: courier.vehicleType,
+          vehiclePlate: courier.vehiclePlate,
+          ratingAvg: Number(courier.ratingAvg || 5.0),
+        },
+        client: {
+          id: order.clientId,
+          fullName: clientRow.clientName || 'Cliente',
+          phone: clientRow.clientPhone || '',
+        },
+        agreedPrice: Number(order.offeredPrice),
+      });
+
+
+      socketEvents.emitOrderStatusChange(orderId, {
+        orderId,
+        newStatus: 'ACCEPTED',
+        updatedAt: new Date().toISOString(),
+      });
+
       return {
         orderId,
         courierId,
@@ -195,6 +292,7 @@ export const biddingService = {
       };
     });
   },
+
 
   async getOrderBids(orderId: string): Promise<OrderBid[]> {
     const res = await db.query(

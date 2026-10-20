@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, Linking, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UniversalMap } from '../../components/map/UniversalMap';
 import { Button } from '../../components/common/Button';
 import { PinModal } from '../../components/common/PinModal';
 import { ChatModal } from '../../components/chat/ChatModal';
-import { SosButton } from '../../components/common/SosButton';
+import { HistoryModal } from '../../components/common/HistoryModal';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -15,6 +15,7 @@ import {
   SOCKET_EVENTS,
   SocketOrderNewAvailablePayload,
   SocketCorridorAlertPayload,
+  SocketOrderAssignedPayload,
   GeoPoint,
 } from '@plataforma/shared';
 
@@ -25,19 +26,59 @@ export default function CourierHomeScreen() {
   const [availableOrders, setAvailableOrders] = useState<SocketOrderNewAvailablePayload[]>([]);
   const [corridorAlerts, setCorridorAlerts] = useState<SocketCorridorAlertPayload[]>([]);
   const [activeOrders, setActiveOrders] = useState<ServiceOrder[]>([]);
-  const [courierLocation, setCourierLocation] = useState<GeoPoint | null>(null);
+  const [courierLocation, setCourierLocation] = useState<GeoPoint | null>(() => locationTracker.getCachedLocation());
+  const [submittedBids, setSubmittedBids] = useState<Record<string, number>>({});
+  const [locatingGps, setLocatingGps] = useState(false);
+
+  // Modo Oscuro (Feature 7)
+  const [darkMode, setDarkMode] = useState(false);
+
+  // Modo Destino para el Conductor (Feature 4)
+  const [targetDestination, setTargetDestination] = useState<string | null>(null);
+  const [destModalVisible, setDestModalVisible] = useState(false);
+  const [destCustomInput, setDestCustomInput] = useState('');
+  const [onlyShowMatchingDest, setOnlyShowMatchingDest] = useState(false);
 
   // Modales
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [selectedOrderIdForPin, setSelectedOrderIdForPin] = useState<string | null>(null);
   const [chatModalVisible, setChatModalVisible] = useState(false);
   const [selectedOrderIdForChat, setSelectedOrderIdForChat] = useState<string | null>(null);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
+
+  // Capturar GPS explícitamente
+  const handleCaptureGps = async () => {
+    setLocatingGps(true);
+    try {
+      const granted = await locationTracker.requestPermissions();
+      if (granted) {
+        const loc = await locationTracker.getCurrentLocation();
+        if (loc) {
+          setCourierLocation(loc);
+          locationTracker.startTracking(activeOrders.map((o) => o.id));
+        }
+      } else {
+        const msg = 'Por favor habilita el permiso de ubicación en tu navegador o celular para poder trabajar.';
+        if (Platform.OS === 'web') alert(msg);
+        else Alert.alert('Ubicación requerida', msg);
+      }
+    } catch (err) {
+      console.warn('Error al capturar GPS:', err);
+    } finally {
+      setLocatingGps(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
 
-    // Iniciar rastreo y pedir permisos GPS en web/móvil
+    // Intentar obtener GPS inicial con caché
+    const cached = locationTracker.getCachedLocation();
+    if (cached && !courierLocation) {
+      setCourierLocation(cached);
+    }
+
     locationTracker.requestPermissions().then(async (granted) => {
       if (granted && isMounted) {
         const loc = await locationTracker.getCurrentLocation();
@@ -71,33 +112,68 @@ export default function CourierHomeScreen() {
     const handleOrderCancelled = (data: { orderId: string }) => {
       setAvailableOrders((prev) => prev.filter((o) => o.orderId !== data.orderId));
       setActiveOrders((prev) => prev.filter((o) => o.id !== data.orderId));
+      setSubmittedBids((prev) => {
+        const next = { ...prev };
+        delete next[data.orderId];
+        return next;
+      });
+    };
+
+    // Al asignarse la orden al conductor
+    const handleOrderAssigned = async (payload: SocketOrderAssignedPayload) => {
+      if (payload.courier?.id === user?.id) {
+        try {
+          const res = await api.get<ServiceOrder>(`/api/orders/${payload.orderId}`);
+          if (isMounted) {
+            setActiveOrders((prev) => [res.data, ...prev.filter((o) => o.id !== payload.orderId)]);
+            setAvailableOrders((prev) => prev.filter((o) => o.orderId !== payload.orderId));
+            setSubmittedBids((prev) => {
+              const next = { ...prev };
+              delete next[payload.orderId];
+              return next;
+            });
+            if (Platform.OS === 'web') {
+              alert('🎉 ¡El cliente ha aceptado tu tarifa! El pedido está en curso.');
+            } else {
+              Alert.alert('¡Adjudicado!', 'El cliente ha aceptado tu tarifa. Dirígete al origen.');
+            }
+          }
+        } catch {
+          // Fallback
+        }
+      }
     };
 
     socket.on(SOCKET_EVENTS.ORDER_NEW_AVAILABLE, handleNewOrder);
     socket.on(SOCKET_EVENTS.ORDER_CORRIDOR_ALERT, handleCorridorAlert);
     socket.on(SOCKET_EVENTS.ORDER_CANCELLED, handleOrderCancelled);
+    socket.on(SOCKET_EVENTS.ORDER_ASSIGNED, handleOrderAssigned);
 
     return () => {
       isMounted = false;
       socket.off(SOCKET_EVENTS.ORDER_NEW_AVAILABLE, handleNewOrder);
       socket.off(SOCKET_EVENTS.ORDER_CORRIDOR_ALERT, handleCorridorAlert);
       socket.off(SOCKET_EVENTS.ORDER_CANCELLED, handleOrderCancelled);
+      socket.off(SOCKET_EVENTS.ORDER_ASSIGNED, handleOrderAssigned);
       locationTracker.stopTracking();
     };
-  }, [activeOrders]);
+  }, [activeOrders, user?.id]);
 
   // Tomar mandado atómicamente
   const handleClaimErrand = async (orderId: string) => {
     setLoadingAction(true);
     try {
       const res = await api.post(`/api/bids/claim-errand/${orderId}`);
-      Alert.alert('¡Éxito!', res.data.message);
+      if (Platform.OS === 'web') alert(res.data.message);
+      else Alert.alert('¡Éxito!', res.data.message);
+
       setAvailableOrders((prev) => prev.filter((o) => o.orderId !== orderId));
-      // Cargar orden en activas
       const orderRes = await api.get<ServiceOrder>(`/api/orders/${orderId}`);
       setActiveOrders((prev) => [orderRes.data, ...prev]);
     } catch (err: unknown) {
-      Alert.alert('Aviso', err instanceof Error ? err.message : 'No se pudo adjudicar el mandado');
+      const msg = err instanceof Error ? err.message : 'No se pudo adjudicar el mandado';
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('Aviso', msg);
     } finally {
       setLoadingAction(false);
     }
@@ -112,9 +188,16 @@ export default function CourierHomeScreen() {
         bidAmount: offeredPrice,
         etaMinutes: 10,
       });
-      Alert.alert('Oferta enviada', 'El cliente está evaluando tu propuesta.');
+      setSubmittedBids((prev) => ({ ...prev, [orderId]: offeredPrice }));
+      if (Platform.OS === 'web') {
+        alert(`Oferta de $${offeredPrice.toLocaleString()} COP enviada. Esperando confirmación del cliente.`);
+      } else {
+        Alert.alert('Oferta enviada', 'El cliente está evaluando tu propuesta.');
+      }
     } catch (err: unknown) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo enviar la oferta');
+      const msg = err instanceof Error ? err.message : 'No se pudo enviar la oferta';
+      if (Platform.OS === 'web') alert(`Error: ${msg}`);
+      else Alert.alert('Error', msg);
     } finally {
       setLoadingAction(false);
     }
@@ -128,56 +211,199 @@ export default function CourierHomeScreen() {
         prev.map((o) => (o.id === orderId ? { ...o, status: nextStatus } : o))
       );
     } catch (err: unknown) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'Error actualizando estado');
+      const msg = err instanceof Error ? err.message : 'Error actualizando estado';
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('Error', msg);
     }
   };
 
   // Verificar PIN OTP para finalizar
   const handleVerifyPin = async (pin: string) => {
     if (!selectedOrderIdForPin) return;
-    const res = await api.post('/api/orders/complete-pin', {
-      orderId: selectedOrderIdForPin,
-      pin,
-    });
-    Alert.alert('¡Entrega Exitosa!', `Comisión debitada: $${res.data.commissionDeducted} COP`);
-    setActiveOrders((prev) => prev.filter((o) => o.id !== selectedOrderIdForPin));
-    setPinModalVisible(false);
-    setSelectedOrderIdForPin(null);
+    try {
+      const res = await api.post('/api/orders/complete-pin', {
+        orderId: selectedOrderIdForPin,
+        pin,
+      });
+      const successMsg = `¡Entrega Exitosa! Comisión debitada: $${res.data.commissionDeducted} COP`;
+      if (Platform.OS === 'web') alert(successMsg);
+      else Alert.alert('¡Entrega Exitosa!', successMsg);
+
+      setActiveOrders((prev) => prev.filter((o) => o.id !== selectedOrderIdForPin));
+      setPinModalVisible(false);
+      setSelectedOrderIdForPin(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'PIN inválido';
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('Error', msg);
+    }
   };
 
+  // Modo Destino: coincidencia de sector o dirección
+  const checkDestMatch = (orderDest: string, target: string | null): boolean => {
+    if (!target) return false;
+    const cleanOrder = orderDest.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const cleanTarget = target.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (cleanOrder.includes(cleanTarget) || cleanTarget.includes(cleanOrder)) return true;
+    const words = cleanTarget.split(/[\s,.-]+/).filter((w) => w.length >= 4);
+    return words.some((w) => cleanOrder.includes(w));
+  };
+
+  const processedOrders = availableOrders
+    .filter((order) => {
+      if (targetDestination && onlyShowMatchingDest) {
+        return checkDestMatch(order.destinationAddress, targetDestination);
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (targetDestination) {
+        const aMatch = checkDestMatch(a.destinationAddress, targetDestination) ? 1 : 0;
+        const bMatch = checkDestMatch(b.destinationAddress, targetDestination) ? 1 : 0;
+        return bMatch - aMatch;
+      }
+      return 0;
+    });
+
+  // Determinar ruta según fase activa
+  const currentActive = activeOrders[0];
+  const isHeadingToPickup = currentActive && currentActive.status === 'ACCEPTED';
+  const mapOrigin = isHeadingToPickup
+    ? courierLocation || currentActive.originPoint
+    : currentActive?.originPoint;
+  const mapDestination = isHeadingToPickup
+    ? currentActive?.originPoint
+    : currentActive?.destinationPoint;
+
   return (
-    <View className="flex-1 bg-slate-50">
+    <View className={`flex-1 ${darkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
       {/* Barra Superior del Conductor */}
-      <View className="bg-secondary px-5 py-4 pt-10 flex-row items-center justify-between shadow-md">
-        <View>
-          <Text className="text-white font-bold text-lg">{user?.fullName}</Text>
-          <View className="flex-row items-center gap-1.5 mt-0.5">
-            <View className="w-2 h-2 rounded-full bg-emerald-400" />
-            <Text className="text-xs text-slate-300">En línea • GPS 2do Plano Activo</Text>
+      <View className="bg-secondary px-5 py-4 pt-10 shadow-md">
+        <View className="flex-row items-center justify-between">
+          <View>
+            <Text className="text-white font-bold text-lg">{user?.fullName}</Text>
+            <View className="flex-row items-center gap-1.5 mt-0.5">
+              <View className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <Text className="text-xs text-slate-300">Conductor Conectado • Radar Activo</Text>
+            </View>
+          </View>
+
+          <View className="flex-row items-center gap-2">
+            <TouchableOpacity
+              onPress={() => router.push('/(courier)/wallet')}
+              className="bg-primary/20 border border-primary/50 px-3 py-1.5 rounded-full flex-row items-center gap-1"
+            >
+              <Text className="text-primary font-bold text-xs">
+                💰 ${user?.walletBalance || 0} COP
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setHistoryVisible(true)}
+              className="bg-white/10 border border-white/20 px-3 py-1.5 rounded-full flex-row items-center gap-1 active:bg-white/20"
+            >
+              <Text className="text-white font-bold text-xs">📜 Historial</Text>
+            </TouchableOpacity>
+
+            {/* Toggle Modo Oscuro / Noche (Feature 7) */}
+            <TouchableOpacity
+              onPress={() => setDarkMode(!darkMode)}
+              className={`border px-2.5 py-1.5 rounded-full flex-row items-center gap-1 ${
+                darkMode ? 'bg-amber-400/20 border-amber-400/50' : 'bg-white/10 border-white/20'
+              }`}
+            >
+              <Text className="text-white font-bold text-xs">
+                {darkMode ? '☀️ Día' : '🌙 Noche'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                logout();
+                router.replace('/(auth)/login');
+              }}
+              className="bg-red-500/20 border border-red-500/40 px-3 py-1.5 rounded-full flex-row items-center gap-1"
+            >
+              <Text className="text-red-300 font-bold text-xs">🚪 Salir</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        <View className="flex-row items-center gap-2">
-          <TouchableOpacity
-            onPress={() => router.push('/(courier)/wallet')}
-            className="bg-primary/20 border border-primary/50 px-3 py-1.5 rounded-full flex-row items-center gap-1"
-          >
-            <Text className="text-primary font-bold text-xs">
-              💰 ${user?.walletBalance || 0} COP
+        {/* Fila inferior: GPS y Modo Destino */}
+        <View className="mt-3 flex-row items-center justify-between pt-2 border-t border-slate-700/60">
+          <View className="flex-row items-center gap-2">
+            <Text className="text-xs text-slate-300">
+              📍 {courierLocation ? `GPS: ${courierLocation.latitude.toFixed(4)}, ${courierLocation.longitude.toFixed(4)}` : 'Sin fijar GPS'}
             </Text>
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            onPress={() => {
-              logout();
-              router.replace('/login');
-            }}
-            className="bg-red-500/20 border border-red-500/40 px-3 py-1.5 rounded-full flex-row items-center gap-1"
-          >
-            <Text className="text-red-300 font-bold text-xs">🚪 Salir</Text>
-          </TouchableOpacity>
+          <View className="flex-row items-center gap-2">
+            {/* Botón para abrir Modo Destino (Feature 4) */}
+            <TouchableOpacity
+              onPress={() => setDestModalVisible(true)}
+              className={`px-3 py-1 rounded-full flex-row items-center gap-1 border shadow-sm ${
+                targetDestination
+                  ? 'bg-emerald-600 border-emerald-400'
+                  : 'bg-primary/20 border-primary/40'
+              }`}
+            >
+              <Text className={`text-xs font-bold ${targetDestination ? 'text-white' : 'text-primary'}`}>
+                {targetDestination ? `🎯 Hacia: ${targetDestination}` : '🎯 Modo Destino'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleCaptureGps}
+              disabled={locatingGps}
+              className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 px-3 py-1 rounded-full flex-row items-center gap-1.5 shadow-sm"
+            >
+              {locatingGps ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text className="text-xs font-bold text-white">🎯 Mi Ubicación (GPS)</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
+
+      {/* Franja de Modo Destino Activo (Feature 4) */}
+      {targetDestination && (
+        <View className="bg-emerald-700 px-4 py-2.5 flex-row items-center justify-between border-b border-emerald-600 shadow-sm">
+          <View className="flex-1 mr-2 flex-row items-center gap-2">
+            <Text className="text-white text-base">🎯</Text>
+            <View className="flex-1">
+              <Text className="text-white font-extrabold text-[11px] uppercase tracking-wider">
+                Modo Destino Activo
+              </Text>
+              <Text className="text-emerald-100 text-xs font-medium" numberOfLines={1}>
+                Priorizando pedidos hacia: <Text className="font-bold text-white">{targetDestination}</Text>
+              </Text>
+            </View>
+          </View>
+          <View className="flex-row items-center gap-2">
+            <TouchableOpacity
+              onPress={() => setOnlyShowMatchingDest(!onlyShowMatchingDest)}
+              className={`px-2.5 py-1 rounded-full border ${
+                onlyShowMatchingDest ? 'bg-white' : 'bg-emerald-800/80 border-emerald-400'
+              }`}
+            >
+              <Text className={`text-[11px] font-bold ${onlyShowMatchingDest ? 'text-emerald-800' : 'text-white'}`}>
+                {onlyShowMatchingDest ? '✓ Solo Destino' : 'Ver Todos'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setTargetDestination(null);
+                setOnlyShowMatchingDest(false);
+              }}
+              className="bg-black/30 px-2.5 py-1 rounded-full"
+            >
+              <Text className="text-white text-[11px] font-bold">✕ Quitar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* Alerta Destacada de Pedido en Corredor (Batching) */}
       {corridorAlerts.length > 0 && (
@@ -199,16 +425,17 @@ export default function CourierHomeScreen() {
         </View>
       )}
 
-      {/* Mapa del Domiciliario y Radar GPS */}
-      <View style={{ height: 260, width: '100%', position: 'relative' }}>
+      {/* Mapa del Domiciliario y Enrutamiento por Calles con Modo Oscuro */}
+      <View style={{ height: 280, width: '100%', position: 'relative' }}>
         <UniversalMap
           center={courierLocation || { latitude: 6.2442, longitude: -75.5812 }}
           zoom={14}
+          darkMode={darkMode}
           userLocation={courierLocation}
           courierLocation={courierLocation}
-          origin={activeOrders[0]?.originPoint}
-          destination={activeOrders[0]?.destinationPoint}
-          orderMarkers={availableOrders.map((o) => ({
+          origin={mapOrigin}
+          destination={mapDestination}
+          orderMarkers={processedOrders.map((o) => ({
             id: o.orderId,
             latitude: o.originPoint?.latitude || 6.2442,
             longitude: o.originPoint?.longitude || -75.5812,
@@ -226,162 +453,395 @@ export default function CourierHomeScreen() {
             <Text className="text-base font-extrabold text-slate-900 mb-3">
               Entregas en Curso ({activeOrders.length}/3)
             </Text>
-            {activeOrders.map((order) => (
-              <View
-                key={order.id}
-                className="bg-white border border-slate-200 rounded-3xl p-5 mb-3 shadow-sm"
-              >
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-xs font-bold text-primary uppercase">
-                    {order.serviceType}
-                  </Text>
-                  <Text className="text-base font-extrabold text-slate-900">
-                    ${order.agreedPrice || order.offeredPrice} COP
-                  </Text>
-                </View>
+            {activeOrders.map((order) => {
+              const isPickupPhase = order.status === 'ACCEPTED';
+              const targetPoint = isPickupPhase ? order.originPoint : order.destinationPoint;
 
-                <Text className="text-sm font-semibold text-slate-800 mb-1">
-                  📍 Entrega: {order.destinationAddress}
-                </Text>
-                {order.descriptionNotes ? (
-                  <Text className="text-xs text-slate-500 mb-3">
-                    Nota: {order.descriptionNotes}
-                  </Text>
-                ) : null}
+              return (
+                <View
+                  key={order.id}
+                  className="bg-white border-2 border-primary/30 rounded-3xl p-5 mb-4 shadow-md"
+                >
+                  <View className="flex-row items-center justify-between mb-2">
+                    <View className="flex-row items-center gap-1.5">
+                      <View className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <Text className="text-xs font-black text-primary uppercase">
+                        {order.serviceType} • {order.status}
+                      </Text>
+                    </View>
+                    <Text className="text-lg font-black text-slate-900">
+                      ${order.agreedPrice || order.offeredPrice} COP
+                    </Text>
+                  </View>
 
-                {/* Acciones de Estado */}
-                <View className="flex-row gap-2 mt-2">
-                  {order.status === 'ACCEPTED' && (
-                    <Button
-                      title="Llegué al Origen"
-                      variant="outline"
-                      onPress={() => handleUpdateStatus(order.id, 'ARRIVED_AT_ORIGIN')}
-                      className="flex-1 py-2.5"
-                    />
+                  <View className="bg-slate-50 p-3 rounded-2xl mb-3 border border-slate-100">
+                    <Text className="text-xs text-slate-500">
+                      {isPickupPhase ? '📍 Dirígete al Punto de Recogida:' : '🏁 Dirígete al Destino de Entrega:'}
+                    </Text>
+                    <Text className="text-sm font-bold text-slate-900 mt-0.5">
+                      {isPickupPhase ? order.originAddress : order.destinationAddress}
+                    </Text>
+                    {order.descriptionNotes ? (
+                      <Text className="text-xs text-slate-600 mt-1.5 italic">
+                        Nota: "{order.descriptionNotes}"
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {/* Botones de Navegación Externa Waze / Google Maps */}
+                  {targetPoint && (
+                    <View className="flex-row gap-2 mb-3">
+                      <TouchableOpacity
+                        onPress={() => {
+                          const url = `https://www.google.com/maps/dir/?api=1&destination=${targetPoint.latitude},${targetPoint.longitude}&travelmode=driving`;
+                          if (Platform.OS === 'web') window.open(url, '_blank');
+                          else Linking.openURL(url).catch(() => {});
+                        }}
+                        className="flex-1 bg-blue-50 border border-blue-200 py-2 rounded-xl items-center flex-row justify-center gap-1"
+                      >
+                        <Text className="text-xs font-bold text-blue-700">🗺️ Google Maps</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          const url = `https://waze.com/ul?ll=${targetPoint.latitude},${targetPoint.longitude}&navigate=yes`;
+                          if (Platform.OS === 'web') window.open(url, '_blank');
+                          else Linking.openURL(url).catch(() => {});
+                        }}
+                        className="flex-1 bg-cyan-50 border border-cyan-200 py-2 rounded-xl items-center flex-row justify-center gap-1"
+                      >
+                        <Text className="text-xs font-bold text-cyan-700">🚙 Abrir Waze</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
-                  {(order.status === 'ARRIVED_AT_ORIGIN' || order.status === 'PURCHASING') && (
+
+                  {/* Acciones de Estado del Pedido */}
+                  <View className="flex-row gap-2 mt-1">
+                    {order.status === 'ACCEPTED' && (
+                      <Button
+                        title="Llegué al Origen"
+                        variant="outline"
+                        onPress={() => handleUpdateStatus(order.id, 'ARRIVED_AT_ORIGIN')}
+                        className="flex-1 py-2.5"
+                      />
+                    )}
+                    {(order.status === 'ARRIVED_AT_ORIGIN' || order.status === 'PURCHASING') && (
+                      <Button
+                        title="Paquete Recogido"
+                        variant="primary"
+                        onPress={() => handleUpdateStatus(order.id, 'PICKED_UP')}
+                        className="flex-1 py-2.5"
+                      />
+                    )}
+                    {order.status === 'PICKED_UP' && (
+                      <Button
+                        title="En Tránsito"
+                        variant="primary"
+                        onPress={() => handleUpdateStatus(order.id, 'IN_TRANSIT')}
+                        className="flex-1 py-2.5"
+                      />
+                    )}
+                    {order.status === 'IN_TRANSIT' && (
+                      <Button
+                        title="Finalizar con PIN 🔐"
+                        variant="primary"
+                        onPress={() => {
+                          setSelectedOrderIdForPin(order.id);
+                          setPinModalVisible(true);
+                        }}
+                        className="flex-1 py-2.5"
+                      />
+                    )}
+
                     <Button
-                      title="Paquete Recogido"
-                      variant="primary"
-                      onPress={() => handleUpdateStatus(order.id, 'PICKED_UP')}
-                      className="flex-1 py-2.5"
-                    />
-                  )}
-                  {order.status === 'PICKED_UP' && (
-                    <Button
-                      title="En Tránsito"
-                      variant="primary"
-                      onPress={() => handleUpdateStatus(order.id, 'IN_TRANSIT')}
-                      className="flex-1 py-2.5"
-                    />
-                  )}
-                  {order.status === 'IN_TRANSIT' && (
-                    <Button
-                      title="Finalizar con PIN 🔐"
-                      variant="primary"
+                      title="💬 Chat"
+                      variant="secondary"
                       onPress={() => {
-                        setSelectedOrderIdForPin(order.id);
-                        setPinModalVisible(true);
+                        setSelectedOrderIdForChat(order.id);
+                        setChatModalVisible(true);
                       }}
-                      className="flex-1 py-2.5"
+                      className="px-4 py-2.5"
                     />
-                  )}
-
-                  <Button
-                    title="💬 Chat"
-                    variant="secondary"
-                    onPress={() => {
-                      setSelectedOrderIdForChat(order.id);
-                      setChatModalVisible(true);
-                    }}
-                    className="px-3.5 py-2.5"
-                  />
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
         {/* Sección: Radar de Pedidos Disponibles */}
-        <Text className="text-base font-extrabold text-slate-900 mb-3">
-          Radar de Pedidos Cercanos
-        </Text>
+        <View className="flex-row items-center justify-between mb-3">
+          <Text className={`text-base font-extrabold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+            Radar de Pedidos Cercanos {targetDestination ? `(${processedOrders.length})` : ''}
+          </Text>
+          {targetDestination && (
+            <TouchableOpacity
+              onPress={() => setDestModalVisible(true)}
+              className="flex-row items-center gap-1 bg-emerald-500/20 px-2.5 py-1 rounded-full"
+            >
+              <Text className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                🎯 {targetDestination}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-        {availableOrders.length === 0 ? (
-          <View className="bg-white border border-slate-200 rounded-3xl p-8 items-center shadow-sm">
+        {processedOrders.length === 0 ? (
+          <View className={`border rounded-3xl p-8 items-center shadow-sm ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
             <Text className="text-3xl mb-2">📡</Text>
-            <Text className="text-sm font-bold text-slate-700 text-center mb-1">
-              Escaneando la zona...
+            <Text className={`text-sm font-bold text-center mb-1 ${darkMode ? 'text-white' : 'text-slate-700'}`}>
+              {targetDestination && onlyShowMatchingDest
+                ? `No hay pedidos hacia "${targetDestination}" en este momento`
+                : 'Escaneando la zona...'}
             </Text>
-            <Text className="text-xs text-slate-400 text-center">
-              Te avisaremos al instante con sonido cuando un cliente cercano solicite un servicio.
+            <Text className={`text-xs text-center ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}>
+              {targetDestination && onlyShowMatchingDest
+                ? 'Puedes desactivar "Solo Destino" para ver todos los pedidos disponibles.'
+                : 'Te avisaremos al instante cuando un cliente cercano solicite un servicio.'}
             </Text>
+            {targetDestination && onlyShowMatchingDest && (
+              <TouchableOpacity
+                onPress={() => setOnlyShowMatchingDest(false)}
+                className="mt-3 bg-emerald-600 px-4 py-2 rounded-xl"
+              >
+                <Text className="text-white font-bold text-xs">Ver Todos los Pedidos</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
-          availableOrders.map((order) => (
-            <View
-              key={order.orderId}
-              className="bg-white border border-slate-200 rounded-3xl p-5 mb-3 shadow-sm"
-            >
-              <View className="flex-row items-center justify-between mb-2">
-                <View className="flex-row items-center gap-1.5">
-                  <Text className="text-base">
-                    {order.serviceType === 'DELIVERY' ? '📦' : order.serviceType === 'ERRAND' ? '🛒' : '🛵'}
-                  </Text>
-                  <Text className="text-xs font-bold text-slate-700 uppercase">
-                    {order.serviceType}
+          processedOrders.map((order) => {
+            const hasSubmitted = submittedBids[order.orderId];
+            const isDestMatch = targetDestination ? checkDestMatch(order.destinationAddress, targetDestination) : false;
+
+            return (
+              <View
+                key={order.orderId}
+                className={`border rounded-3xl p-5 mb-3 shadow-sm ${
+                  isDestMatch
+                    ? darkMode
+                      ? 'bg-slate-900 border-emerald-500 shadow-emerald-950'
+                      : 'bg-emerald-50/50 border-emerald-400 shadow-emerald-100'
+                    : darkMode
+                    ? 'bg-slate-900 border-slate-800'
+                    : 'bg-white border-slate-200'
+                }`}
+              >
+                {/* Badge de coincidencia con Modo Destino (Feature 4) */}
+                {isDestMatch && (
+                  <View className="bg-emerald-500/20 border border-emerald-500/40 px-3 py-1.5 rounded-xl mb-3 flex-row items-center gap-2">
+                    <Text className="text-xs">✨</Text>
+                    <Text className={`text-xs font-black ${darkMode ? 'text-emerald-300' : 'text-emerald-800'}`}>
+                      ¡Te deja en tu camino hacia {targetDestination}! 🎯
+                    </Text>
+                  </View>
+                )}
+
+                <View className="flex-row items-center justify-between mb-2">
+                  <View className="flex-row items-center gap-1.5">
+                    <Text className="text-base">
+                      {order.serviceType === 'DELIVERY' ? '📦' : order.serviceType === 'ERRAND' ? '🛒' : '🛵'}
+                    </Text>
+                    <Text className={`text-xs font-bold uppercase ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      {order.serviceType}
+                    </Text>
+                  </View>
+                  <Text className="text-lg font-black text-primary">
+                    ${order.offeredPrice?.toLocaleString()} COP
                   </Text>
                 </View>
-                <Text className="text-lg font-black text-primary">
-                  ${order.offeredPrice} COP
+
+                <Text className={`text-xs mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  De: <Text className={`font-medium ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{order.originAddress}</Text>
                 </Text>
-              </View>
-
-              <Text className="text-xs text-slate-500 mb-1">
-                De: {order.originAddress}
-              </Text>
-              <Text className="text-xs text-slate-800 font-semibold mb-3">
-                A: {order.destinationAddress}
-              </Text>
-
-              {order.descriptionNotes ? (
-                <Text className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl mb-3">
-                  "{order.descriptionNotes}"
+                <Text className={`text-xs font-semibold mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+                  A: <Text className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{order.destinationAddress}</Text>
                 </Text>
-              ) : null}
 
-              <View className="flex-row gap-2">
-                {order.serviceType === 'ERRAND' ? (
-                  <Button
-                    title="Tomar Mandado (Directo)"
-                    variant="primary"
-                    onPress={() => handleClaimErrand(order.orderId)}
-                    loading={loadingAction}
-                    className="flex-1 py-2.5"
-                  />
+                {order.descriptionNotes ? (
+                  <Text className={`text-xs p-2.5 rounded-xl mb-3 ${darkMode ? 'bg-slate-800/80 text-slate-300' : 'bg-slate-50 text-slate-600'}`}>
+                    "{order.descriptionNotes}"
+                  </Text>
+                ) : null}
+
+                {/* Si ya envió oferta para este pedido */}
+                {hasSubmitted ? (
+                  <View className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex-row items-center justify-between">
+                    <View>
+                      <Text className="text-xs font-bold text-amber-900">
+                        ⏳ Oferta de ${hasSubmitted.toLocaleString()} COP enviada
+                      </Text>
+                      <Text className="text-[11px] text-amber-700">
+                        Esperando que el cliente la evalúe...
+                      </Text>
+                    </View>
+                  </View>
                 ) : (
-                  <>
-                    <Button
-                      title="Aceptar Tarifa"
-                      variant="primary"
-                      onPress={() => handleSubmitBid(order.orderId, order.offeredPrice)}
-                      loading={loadingAction}
-                      className="flex-1 py-2.5"
-                    />
-                    <Button
-                      title="Contraofertar +$2k"
-                      variant="outline"
-                      onPress={() => handleSubmitBid(order.orderId, order.offeredPrice + 2000)}
-                      loading={loadingAction}
-                      className="flex-1 py-2.5"
-                    />
-                  </>
+                  <View className="flex-row gap-2">
+                    {order.serviceType === 'ERRAND' ? (
+                      <Button
+                        title="Tomar Mandado (Directo)"
+                        variant="primary"
+                        onPress={() => handleClaimErrand(order.orderId)}
+                        loading={loadingAction}
+                        className="flex-1 py-2.5"
+                      />
+                    ) : (
+                      <>
+                        <Button
+                          title="Aceptar Tarifa"
+                          variant="primary"
+                          onPress={() => handleSubmitBid(order.orderId, order.offeredPrice)}
+                          loading={loadingAction}
+                          className="flex-1 py-2.5"
+                        />
+                        <Button
+                          title="Contraofertar +$2k"
+                          variant="outline"
+                          onPress={() => handleSubmitBid(order.orderId, order.offeredPrice + 2000)}
+                          loading={loadingAction}
+                          className="flex-1 py-2.5"
+                        />
+                      </>
+                    )}
+                  </View>
                 )}
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
+
+      {/* Modal: Modo Destino para Conductor (Feature 4) */}
+      <Modal
+        visible={destModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setDestModalVisible(false)}
+      >
+        <View className="flex-1 justify-end bg-black/60">
+          <View className={`rounded-t-3xl p-6 shadow-2xl max-h-[85%] ${darkMode ? 'bg-slate-900 border-t border-slate-800' : 'bg-white'}`}>
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-2xl">🎯</Text>
+                <View>
+                  <Text className={`text-lg font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                    Modo Destino
+                  </Text>
+                  <Text className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Prioriza pedidos en tu camino a casa o zona elegida
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setDestModalVisible(false)}
+                className={`w-8 h-8 rounded-full items-center justify-center ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`}
+              >
+                <Text className={`font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Sectores Rápidos Populares */}
+            <Text className={`text-xs font-bold mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+              Sectores Rápidos:
+            </Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {['🏠 Casa', '🏢 Centro', '🌳 El Poblado', '⛰️ Laureles', '🏙️ Bello', '🏬 Envigado', '🏭 Itagüí', '🏔️ Sabaneta'].map((sector) => {
+                const name = sector.replace(/^[^\w]+/, '').trim();
+                const isSelected = targetDestination?.toLowerCase() === name.toLowerCase();
+                return (
+                  <TouchableOpacity
+                    key={sector}
+                    onPress={() => {
+                      setTargetDestination(name);
+                      setDestModalVisible(false);
+                    }}
+                    className={`border px-3 py-1.5 rounded-full ${
+                      isSelected
+                        ? 'bg-emerald-600 border-emerald-500'
+                        : darkMode
+                        ? 'bg-slate-800 border-slate-700 active:bg-slate-700'
+                        : 'bg-slate-100 border-slate-200 active:bg-slate-200'
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${
+                        isSelected
+                          ? 'text-white font-bold'
+                          : darkMode
+                          ? 'text-slate-200'
+                          : 'text-slate-800'
+                      }`}
+                    >
+                      {sector}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Entrada personalizada de texto */}
+            <Text className={`text-xs font-bold mb-1 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+              O escribe un barrio o dirección:
+            </Text>
+            <View className="flex-row items-center gap-2 mb-4">
+              <TextInput
+                value={destCustomInput}
+                onChangeText={setDestCustomInput}
+                placeholder="Ej: Belén, Calasanz, Robledo..."
+                placeholderTextColor="#94A3B8"
+                className={`flex-1 border rounded-2xl px-4 py-3 text-sm ${
+                  darkMode
+                    ? 'bg-slate-800 border-slate-700 text-white'
+                    : 'bg-slate-50 border-slate-200 text-slate-900'
+                }`}
+              />
+              <Button
+                title="Fijar"
+                variant="primary"
+                onPress={() => {
+                  if (destCustomInput.trim()) {
+                    setTargetDestination(destCustomInput.trim());
+                    setDestCustomInput('');
+                    setDestModalVisible(false);
+                  }
+                }}
+                className="px-4 py-3"
+              />
+            </View>
+
+            {targetDestination && (
+              <View className={`border p-3.5 rounded-2xl mb-4 flex-row items-center justify-between ${
+                darkMode ? 'bg-emerald-950/40 border-emerald-800' : 'bg-emerald-50 border-emerald-200'
+              }`}>
+                <View className="flex-1 mr-2">
+                  <Text className={`text-xs font-bold ${darkMode ? 'text-emerald-300' : 'text-emerald-900'}`}>
+                    Destino Activo: {targetDestination}
+                  </Text>
+                  <Text className={`text-[11px] ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
+                    Los pedidos hacia este sector se destacan y ordenan primero.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setTargetDestination(null);
+                    setDestModalVisible(false);
+                  }}
+                  className="bg-red-500/20 px-3 py-1.5 rounded-full"
+                >
+                  <Text className="text-xs font-bold text-red-500">Desactivar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Button
+              title="Cerrar"
+              variant="outline"
+              onPress={() => setDestModalVisible(false)}
+              className="w-full py-2.5"
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Modales */}
       <PinModal
@@ -405,6 +865,12 @@ export default function CourierHomeScreen() {
           }}
         />
       )}
+
+      <HistoryModal
+        visible={historyVisible}
+        onClose={() => setHistoryVisible(false)}
+        isCourier={true}
+      />
     </View>
   );
 }

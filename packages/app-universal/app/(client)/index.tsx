@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UniversalMap, NearbyCourierMarker } from '../../components/map/UniversalMap';
 import { Input } from '../../components/common/Input';
+import { AddressAutocomplete } from '../../components/common/AddressAutocomplete';
 import { Button } from '../../components/common/Button';
 import { ChatModal } from '../../components/chat/ChatModal';
 import { SosButton } from '../../components/common/SosButton';
 import { RatingModal } from '../../components/common/RatingModal';
+import { HistoryModal } from '../../components/common/HistoryModal';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -20,18 +22,26 @@ import {
   SocketOrderAssignedPayload,
 } from '@plataforma/shared';
 
+interface StopItem {
+  id: string;
+  address: string;
+  point: GeoPoint;
+}
+
 export default function ClientHomeScreen() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
 
   // Ubicación del usuario (GPS)
-  const [userLocation, setUserLocation] = useState<GeoPoint | null>(null);
+  const [userLocation, setUserLocation] = useState<GeoPoint | null>(() => locationTracker.getCachedLocation());
+  const [locatingGps, setLocatingGps] = useState(false);
 
   // Estados de solicitud
   const [serviceType, setServiceType] = useState<ServiceType>('DELIVERY');
-  const [originAddress, setOriginAddress] = useState('Obteniendo tu ubicación GPS...');
-  const [originPoint, setOriginPoint] = useState<GeoPoint>({ latitude: 6.2442, longitude: -75.5812 });
-  const [destAddress, setDestAddress] = useState('Parque Lleras, Medellín');
+  const [originAddress, setOriginAddress] = useState('Mi ubicación actual');
+  const [originPoint, setOriginPoint] = useState<GeoPoint>(() => locationTracker.getCachedLocation() || { latitude: 6.2442, longitude: -75.5812 });
+  const [intermediateStops, setIntermediateStops] = useState<StopItem[]>([]);
+  const [destAddress, setDestAddress] = useState('Parque Central');
   const [destPoint, setDestPoint] = useState<GeoPoint>({ latitude: 6.2085, longitude: -75.5678 });
   const [description, setDescription] = useState('');
   const [estimatedPurchase, setEstimatedPurchase] = useState('25000');
@@ -41,6 +51,7 @@ export default function ClientHomeScreen() {
   const [activeOrder, setActiveOrder] = useState<ServiceOrder | null>(null);
   const [incomingBids, setIncomingBids] = useState<SocketBidReceivedPayload[]>([]);
   const [courierLocation, setCourierLocation] = useState<{ latitude: number; longitude: number; bearing?: number } | null>(null);
+  const [completedOrderId, setCompletedOrderId] = useState<string | null>(null);
 
   // Conductores cercanos en mapa (Estilo Uber / InDrive)
   const [nearbyCouriers, setNearbyCouriers] = useState<NearbyCourierMarker[]>([]);
@@ -48,41 +59,68 @@ export default function ClientHomeScreen() {
   // Modales
   const [chatVisible, setChatVisible] = useState(false);
   const [ratingVisible, setRatingVisible] = useState(false);
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  // 1. Inicialización de GPS en Navegador / Móvil
+  // Función explícita para capturar GPS del cliente
+  const handleCaptureGps = async () => {
+    setLocatingGps(true);
+    try {
+      const granted = await locationTracker.requestPermissions();
+      if (granted) {
+        const loc = await locationTracker.getCurrentLocation();
+        if (loc) {
+          setUserLocation(loc);
+          setOriginPoint(loc);
+          setOriginAddress(`Mi ubicación actual (${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)})`);
+          fetchNearbyCouriers(loc.latitude, loc.longitude);
+        }
+      } else {
+        const msg = 'Por favor habilita el permiso de ubicación en tu navegador para ubicarte con exactitud.';
+        if (Platform.OS === 'web') alert(msg);
+        else Alert.alert('Permiso Requerido', msg);
+      }
+    } catch (err) {
+      console.warn('Error capturando GPS:', err);
+    } finally {
+      setLocatingGps(false);
+    }
+  };
+
+  // 1. Inicialización de GPS
   useEffect(() => {
     let isMounted = true;
 
-    const requestGps = async () => {
-      try {
-        const granted = await locationTracker.requestPermissions();
-        if (granted) {
-          const loc = await locationTracker.getCurrentLocation();
-          if (loc && isMounted) {
-            setUserLocation(loc);
-            setOriginPoint(loc);
-            setOriginAddress('Mi ubicación actual (GPS)');
-            fetchNearbyCouriers(loc.latitude, loc.longitude);
-          }
-        } else {
-          // Si no concedió permiso, usar punto por defecto y buscar conductores
-          fetchNearbyCouriers(6.2442, -75.5812);
-        }
-      } catch (err) {
-        console.warn('Error inicializando geolocalización:', err);
-      }
-    };
+    // Si ya hay ubicación en caché, iniciar allí de una vez
+    const cached = locationTracker.getCachedLocation();
+    if (cached) {
+      setOriginPoint(cached);
+      setUserLocation(cached);
+      setOriginAddress(`Mi ubicación actual (${cached.latitude.toFixed(4)}, ${cached.longitude.toFixed(4)})`);
+      fetchNearbyCouriers(cached.latitude, cached.longitude);
+    }
 
-    requestGps();
+    // Solicitar permiso en segundo plano
+    locationTracker.requestPermissions().then(async (granted) => {
+      if (granted && isMounted) {
+        const loc = await locationTracker.getCurrentLocation();
+        if (loc && isMounted) {
+          setUserLocation(loc);
+          setOriginPoint(loc);
+          setOriginAddress(`Mi ubicación actual (${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)})`);
+          fetchNearbyCouriers(loc.latitude, loc.longitude);
+        }
+      }
+    });
 
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // 2. Consulta y Simulación de Conductores Cercanos (Estilo Uber/InDrive)
+  // 2. Consulta y Simulación de Conductores Cercanos
   const fetchNearbyCouriers = async (lat: number, lng: number) => {
     try {
       const res = await api.get<any[]>('/api/orders/nearby-couriers', {
@@ -98,8 +136,6 @@ export default function ClientHomeScreen() {
         name: c.fullName,
       }));
 
-      // Si hay menos de 3 conductores reales registrados en la zona de prueba,
-      // generamos 3 vehículos dinámicos alrededor del cliente para dar dinamismo visual (InDrive style)
       if (couriers.length < 3) {
         const simulatedOffsets = [
           { dLat: 0.0035, dLng: 0.0028, type: 'MOTO', angle: 45 },
@@ -122,11 +158,11 @@ export default function ClientHomeScreen() {
 
       setNearbyCouriers(couriers);
     } catch {
-      // Ignorar fallback
+      // Fallback
     }
   };
 
-  // Movimiento sutil periódico de los carritos en el mapa (efecto InDrive)
+  // Movimiento sutil de vehículos
   useEffect(() => {
     const interval = setInterval(() => {
       setNearbyCouriers((prev) =>
@@ -149,7 +185,7 @@ export default function ClientHomeScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // 3. Conexión de Sockets y Eventos en Vivo
+  // 3. Sockets y Eventos en Vivo
   useEffect(() => {
     const socket = getSocket();
 
@@ -169,6 +205,9 @@ export default function ClientHomeScreen() {
     };
 
     const handleCompleted = () => {
+      if (activeOrder) {
+        setCompletedOrderId(activeOrder.id);
+      }
       setRatingVisible(true);
       setActiveOrder(null);
       setCourierLocation(null);
@@ -176,7 +215,8 @@ export default function ClientHomeScreen() {
 
     const handleCancelled = (payload: { orderId: string }) => {
       if (activeOrder && activeOrder.id === payload.orderId) {
-        Alert.alert('Aviso', 'La orden fue cancelada.');
+        if (Platform.OS === 'web') alert('La orden fue cancelada.');
+        else Alert.alert('Aviso', 'La orden fue cancelada.');
         setActiveOrder(null);
         setIncomingBids([]);
         setCourierLocation(null);
@@ -202,13 +242,20 @@ export default function ClientHomeScreen() {
   const handleCreateOrder = async () => {
     setLoading(true);
     try {
+      // Si hay paradas intermedias, anexarlas en descripción/notas
+      let finalDescription = description;
+      if (intermediateStops.length > 0) {
+        const stopsSummary = intermediateStops.map((s, i) => `[Parada ${i + 1}: ${s.address}]`).join(' -> ');
+        finalDescription = finalDescription ? `${finalDescription} • Paradas: ${stopsSummary}` : `Paradas intermedias: ${stopsSummary}`;
+      }
+
       const res = await api.post<ServiceOrder>('/api/orders', {
         serviceType,
         originAddress,
         originPoint,
         destinationAddress: destAddress,
         destinationPoint: destPoint,
-        descriptionNotes: description || undefined,
+        descriptionNotes: finalDescription || undefined,
         estimatedPurchaseCost: serviceType === 'ERRAND' ? Number(estimatedPurchase) : 0,
         offeredPrice: Number(offeredPrice),
       });
@@ -219,7 +266,9 @@ export default function ClientHomeScreen() {
       const socket = getSocket();
       socket.emit('order:join', res.data.id);
     } catch (err: unknown) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo crear el pedido');
+      const msg = err instanceof Error ? err.message : 'No se pudo crear el pedido';
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -233,12 +282,15 @@ export default function ClientHomeScreen() {
       setCancelling(true);
       try {
         await api.post(`/api/orders/${activeOrder.id}/cancel`);
-        Alert.alert('Pedido Cancelado', 'Tu solicitud ha sido cancelada exitosamente.');
+        if (Platform.OS === 'web') alert('Tu solicitud ha sido cancelada exitosamente.');
+        else Alert.alert('Pedido Cancelado', 'Tu solicitud ha sido cancelada exitosamente.');
         setActiveOrder(null);
         setIncomingBids([]);
         setCourierLocation(null);
       } catch (err: unknown) {
-        Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo cancelar el pedido');
+        const msg = err instanceof Error ? err.message : 'No se pudo cancelar el pedido';
+        if (Platform.OS === 'web') alert(msg);
+        else Alert.alert('Error', msg);
       } finally {
         setCancelling(false);
       }
@@ -269,11 +321,44 @@ export default function ClientHomeScreen() {
         bidId,
       });
     } catch (err: unknown) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo aceptar la oferta');
+      const msg = err instanceof Error ? err.message : 'No se pudo aceptar la oferta';
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('Error', msg);
     }
   };
 
-  // 7. Cerrar Sesión
+  // 7. Calificar Conductor
+  const handleRateSubmit = async (score: number, tags: string[], comment?: string) => {
+    if (!completedOrderId) return;
+    try {
+      await api.post(`/api/orders/${completedOrderId}/rate`, {
+        score,
+        comment,
+        feedbackTags: tags,
+      });
+      if (Platform.OS === 'web') alert('¡Gracias! Tu calificación ayuda a mantener segura la plataforma.');
+      else Alert.alert('¡Gracias!', 'Tu calificación ayuda a mantener segura la plataforma.');
+    } catch (err) {
+      console.warn('Error calificando servicio:', err);
+    }
+  };
+
+  // 8. Compartir viaje con familiares vía WhatsApp (Live Trip Sharing)
+  const handleShareLiveTrip = () => {
+    if (!activeOrder) return;
+    const origin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080';
+    const trackUrl = `${origin}/track/${activeOrder.id}`;
+    const text = encodeURIComponent(`Hola, sigo en camino con mi servicio. Puedes ver mi ubicación y recorrido en vivo en el mapa aquí: ${trackUrl}`);
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${text}`;
+
+    if (Platform.OS === 'web') {
+      window.open(whatsappUrl, '_blank');
+    } else {
+      Linking.openURL(whatsappUrl).catch(() => {});
+    }
+  };
+
+  // 9. Cerrar Sesión
   const handleLogout = () => {
     logout();
     router.replace('/(auth)/login');
@@ -281,7 +366,7 @@ export default function ClientHomeScreen() {
 
   return (
     <View className="flex-1 bg-slate-50">
-      {/* Barra de Encabezado Superior con Saludo y Cerrar Sesión */}
+      {/* Barra de Encabezado Superior con Saludo, Historial y Cerrar Sesión */}
       <View className="bg-secondary px-5 py-3 pt-12 flex-row items-center justify-between shadow-md z-20">
         <View>
           <Text className="text-white font-black text-base tracking-tight">
@@ -292,23 +377,46 @@ export default function ClientHomeScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity
-          onPress={handleLogout}
-          className="bg-white/10 hover:bg-white/20 px-3.5 py-1.5 rounded-full border border-white/20 flex-row items-center gap-1.5"
-        >
-          <Text className="text-white font-semibold text-xs">🚪 Cerrar Sesión</Text>
-        </TouchableOpacity>
+        <View className="flex-row items-center gap-2">
+          {/* Toggle Modo Oscuro / Noche (Feature 7) */}
+          <TouchableOpacity
+            onPress={() => setDarkMode(!darkMode)}
+            className={`px-2.5 py-1.5 rounded-full border flex-row items-center gap-1 ${
+              darkMode ? 'bg-amber-400/20 border-amber-400/50' : 'bg-white/10 border-white/20'
+            }`}
+          >
+            <Text className="text-white font-semibold text-xs">
+              {darkMode ? '☀️ Día' : '🌙 Noche'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setHistoryVisible(true)}
+            className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full border border-white/20 flex-row items-center gap-1"
+          >
+            <Text className="text-white font-semibold text-xs">📜 Historial</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleLogout}
+            className="bg-red-500/20 hover:bg-red-500/30 px-3 py-1.5 rounded-full border border-red-500/30 flex-row items-center gap-1"
+          >
+            <Text className="text-red-300 font-semibold text-xs">🚪 Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Mitad Superior: Mapa Universal */}
+      {/* Mitad Superior: Mapa Universal Interactivo */}
       <View className="h-[42%] w-full relative">
         <UniversalMap
           center={originPoint}
           origin={originPoint}
-          destination={activeOrder ? destPoint : null}
+          destination={destPoint}
+          intermediateStops={intermediateStops.map((s) => s.point)}
           courierLocation={courierLocation}
           userLocation={userLocation}
           nearbyCouriers={nearbyCouriers}
+          darkMode={darkMode}
           onMapClick={(point) => {
             if (!activeOrder) {
               setDestPoint(point);
@@ -377,7 +485,7 @@ export default function ClientHomeScreen() {
                       <View>
                         <Text className="text-sm font-bold text-slate-900">{bid.courierName}</Text>
                         <Text className="text-xs text-slate-500">
-                          ⭐ {bid.courierRating.toFixed(1)} • {bid.vehicleType} {bid.vehiclePlate || ''}
+                          ⭐ {bid.courierRating?.toFixed(1) || '5.0'} • {bid.vehicleType} {bid.vehiclePlate || ''}
                         </Text>
                         {bid.etaMinutes && (
                           <Text className="text-xs text-emerald-600 font-semibold mt-0.5">
@@ -387,7 +495,7 @@ export default function ClientHomeScreen() {
                       </View>
                       <View className="items-end gap-1.5">
                         <Text className="text-base font-black text-slate-900">
-                          ${bid.bidAmount} COP
+                          ${bid.bidAmount?.toLocaleString()} COP
                         </Text>
                         <Button
                           title="Aceptar"
@@ -400,7 +508,7 @@ export default function ClientHomeScreen() {
                   ))
                 )}
 
-                {/* BOTÓN CANCELAR ORDEN SI NO SE HA ASIGNADO */}
+                {/* BOTÓN CANCELAR ORDEN */}
                 <Button
                   title={cancelling ? 'Cancelando...' : '❌ Cancelar Solicitud'}
                   variant="outline"
@@ -411,9 +519,15 @@ export default function ClientHomeScreen() {
               </View>
             )}
 
-            {/* Botón de Chat si ya está asignado */}
+            {/* Botones de Acción si ya está asignado */}
             {activeOrder.status !== 'SEARCHING' && (
               <View className="gap-2 mt-3">
+                <Button
+                  title="📲 Compartir Viaje en Vivo (WhatsApp)"
+                  variant="outline"
+                  onPress={handleShareLiveTrip}
+                  className="border-emerald-300 bg-emerald-50 text-emerald-800"
+                />
                 <Button
                   title="💬 Abrir Chat con el Conductor"
                   variant="secondary"
@@ -474,17 +588,91 @@ export default function ClientHomeScreen() {
               ))}
             </View>
 
-            <Input
+            {/* Punto de Recogida con Autocompletado Nominatim y botón GPS */}
+            <AddressAutocomplete
               label="Punto de Recogida / Salida"
               value={originAddress}
               onChangeText={setOriginAddress}
+              onSelectLocation={(point, text) => {
+                setOriginPoint(point);
+                setOriginAddress(text);
+              }}
+              nearLocation={originPoint}
+              rightAction={
+                <TouchableOpacity
+                  onPress={handleCaptureGps}
+                  disabled={locatingGps}
+                  className="bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex-row items-center gap-1 active:bg-emerald-100"
+                >
+                  {locatingGps ? (
+                    <ActivityIndicator size="small" color="#059669" />
+                  ) : (
+                    <Text className="text-[10px] font-bold text-emerald-700">🎯 Mi Ubicación (GPS)</Text>
+                  )}
+                </TouchableOpacity>
+              }
             />
 
-            <Input
-              label="Punto de Entrega / Destino"
+            {/* Paradas Intermedias (Multi-Drop) */}
+            {intermediateStops.map((stop, idx) => (
+              <View key={stop.id} className="relative">
+                <AddressAutocomplete
+                  label={`Parada Intermedia ${idx + 1}`}
+                  value={stop.address}
+                  onChangeText={(t) => {
+                    setIntermediateStops((prev) =>
+                      prev.map((s, i) => (i === idx ? { ...s, address: t } : s))
+                    );
+                  }}
+                  onSelectLocation={(point, text) => {
+                    setIntermediateStops((prev) =>
+                      prev.map((s, i) => (i === idx ? { ...s, address: text, point } : s))
+                    );
+                  }}
+                  placeholder="Dirección de la parada intermedia..."
+                  nearLocation={originPoint}
+                  rightAction={
+                    <TouchableOpacity
+                      onPress={() => setIntermediateStops((prev) => prev.filter((_, i) => i !== idx))}
+                      className="bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"
+                    >
+                      <Text className="text-[10px] font-bold text-red-600">✕ Quitar</Text>
+                    </TouchableOpacity>
+                  }
+                />
+              </View>
+            ))}
+
+            {/* Botón para añadir parada intermedia */}
+            {intermediateStops.length < 2 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setIntermediateStops((prev) => [
+                    ...prev,
+                    {
+                      id: String(Date.now()),
+                      address: '',
+                      point: { latitude: originPoint.latitude + 0.004, longitude: originPoint.longitude + 0.004 },
+                    },
+                  ]);
+                }}
+                className="mb-3 py-1.5 px-3 bg-slate-100 border border-dashed border-slate-300 rounded-xl flex-row items-center justify-center gap-1.5 active:bg-slate-200"
+              >
+                <Text className="text-xs font-bold text-slate-700">➕ Agregar Parada Intermedia (Multi-Destino)</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Punto de Destino Final con Autocompletado */}
+            <AddressAutocomplete
+              label="Punto de Entrega / Destino Final"
               value={destAddress}
               onChangeText={setDestAddress}
-              placeholder="Escribe o toca en el mapa para ubicar"
+              onSelectLocation={(point, text) => {
+                setDestPoint(point);
+                setDestAddress(text);
+              }}
+              placeholder="Escribe calle, barrio o toca en el mapa..."
+              nearLocation={originPoint}
             />
 
             {serviceType === 'ERRAND' ? (
@@ -543,10 +731,14 @@ export default function ClientHomeScreen() {
       <RatingModal
         visible={ratingVisible}
         targetName="tu conductor"
-        onSubmit={async () => {
-          Alert.alert('¡Gracias!', 'Tu calificación ayuda a mantener segura la plataforma.');
-        }}
+        onSubmit={handleRateSubmit}
         onClose={() => setRatingVisible(false)}
+      />
+
+      <HistoryModal
+        visible={historyVisible}
+        onClose={() => setHistoryVisible(false)}
+        isCourier={false}
       />
     </View>
   );

@@ -16,8 +16,15 @@ orderRouter.post(
 
 orderRouter.get('/nearby-couriers', authenticateJWT, orderController.getNearbyCouriers);
 orderRouter.get('/available', authenticateJWT, orderController.getAvailable);
+orderRouter.get('/history', authenticateJWT, orderController.getHistory);
+orderRouter.get('/public-track/:id', orderController.getPublicTrack);
 
 orderRouter.get('/:id', authenticateJWT, orderController.getOrder);
+
+orderRouter.post('/:orderId/rate', authenticateJWT, orderController.rateOrder);
+orderRouter.post('/:orderId/pqr', authenticateJWT, orderController.createPqr);
+
+
 
 orderRouter.post(
   '/:orderId/cancel',
