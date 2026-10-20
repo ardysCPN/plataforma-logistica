@@ -33,6 +33,7 @@ interface UniversalMapProps {
   userLocation?: GeoPoint | null;
   nearbyCouriers?: NearbyCourierMarker[];
   orderMarkers?: OrderMarker[];
+  isSearching?: boolean;
   darkMode?: boolean;
   onMapClick?: (point: GeoPoint) => void;
   className?: string;
@@ -49,6 +50,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
   userLocation,
   nearbyCouriers = [],
   orderMarkers = [],
+  isSearching = false,
   darkMode = false,
   onMapClick,
   className = '',
@@ -110,6 +112,29 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         style.textContent = `
           .dark-map-mode .maplibregl-canvas {
             filter: invert(90%) hue-rotate(180deg) brightness(85%) contrast(115%) !important;
+          }
+          @keyframes radar-ripple {
+            0% {
+              transform: scale(0.1);
+              opacity: 0.95;
+            }
+            60% {
+              opacity: 0.5;
+            }
+            100% {
+              transform: scale(3.5);
+              opacity: 0;
+            }
+          }
+          @keyframes radar-pulse-core {
+            0%, 100% {
+              transform: scale(1);
+              box-shadow: 0 0 15px rgba(255, 107, 0, 0.7);
+            }
+            50% {
+              transform: scale(1.15);
+              box-shadow: 0 0 30px rgba(255, 107, 0, 1);
+            }
           }
         `;
         document.head.appendChild(style);
@@ -270,6 +295,31 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         updateOrCreateMarker('origin', null, '');
       }
 
+      // 2.1 Radar de Notificación en Vivo a Conductores Cercanos (Estilo Uber / InDrive)
+      const radarPoint = origin || userLocation;
+      if (isSearching && radarPoint) {
+        updateOrCreateMarker(
+          'radar_search',
+          [radarPoint.longitude, radarPoint.latitude],
+          `
+          <div style="position: relative; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+            <div style="position: absolute; width: 140px; height: 140px; border-radius: 50%; border: 2.5px solid rgba(255, 107, 0, 0.85); background: radial-gradient(circle, rgba(255, 107, 0, 0.28) 0%, rgba(255, 107, 0, 0) 70%); animation: radar-ripple 2.4s cubic-bezier(0.2, 0.8, 0.4, 1) infinite; animation-delay: 0s;"></div>
+            <div style="position: absolute; width: 140px; height: 140px; border-radius: 50%; border: 2px solid rgba(255, 107, 0, 0.65); background: radial-gradient(circle, rgba(255, 107, 0, 0.2) 0%, rgba(255, 107, 0, 0) 70%); animation: radar-ripple 2.4s cubic-bezier(0.2, 0.8, 0.4, 1) infinite; animation-delay: 0.8s;"></div>
+            <div style="position: absolute; width: 140px; height: 140px; border-radius: 50%; border: 1.5px solid rgba(255, 107, 0, 0.45); animation: radar-ripple 2.4s cubic-bezier(0.2, 0.8, 0.4, 1) infinite; animation-delay: 1.6s;"></div>
+            <div style="position: relative; width: 34px; height: 34px; border-radius: 50%; background: #FF6B00; border: 3px solid #FFFFFF; display: flex; align-items: center; justify-content: center; animation: radar-pulse-core 1.2s ease-in-out infinite; box-shadow: 0 4px 15px rgba(255, 107, 0, 0.7);">
+              <span style="font-size: 16px;">📡</span>
+            </div>
+            <div style="position: absolute; top: -38px; background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(4px); color: #FFFFFF; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 14px; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid rgba(255, 107, 0, 0.6); display: flex; align-items: center; gap: 5px;">
+              <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10B981;"></span>
+              <span>Notificando conductores cercanos...</span>
+            </div>
+          </div>
+          `
+        );
+      } else {
+        updateOrCreateMarker('radar_search', null, '');
+      }
+
       // 3. Marcador de Destino
       if (destination) {
         updateOrCreateMarker(
@@ -417,6 +467,21 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
           });
 
           map.addLayer({
+            id: 'route-line-casing',
+            type: 'line',
+            source: 'route-line',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#1E3A8A',
+              'line-width': 8,
+              'line-opacity': 0.75,
+            },
+          });
+
+          map.addLayer({
             id: 'route-line-layer',
             type: 'line',
             source: 'route-line',
@@ -427,11 +492,33 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
             paint: {
               'line-color': '#2563EB',
               'line-width': 5.5,
-              'line-opacity': 0.88,
+              'line-opacity': 0.95,
             },
           });
         }
+
+        // Auto-encuadre de la trayectoria para visibilidad total en mobile
+        if (activeCoordinates.length > 1) {
+          try {
+            const bounds = new maplibregl.LngLatBounds();
+            activeCoordinates.forEach((coord: number[]) => {
+              if (coord && coord.length >= 2) {
+                bounds.extend([coord[0], coord[1]]);
+              }
+            });
+            map.fitBounds(bounds, {
+              padding: { top: 60, bottom: 80, left: 40, right: 40 },
+              maxZoom: 16,
+              duration: 900,
+            });
+          } catch {
+            // Ignorar si el mapa está en transición
+          }
+        }
       } else {
+        if (map.getLayer('route-line-casing')) {
+          map.removeLayer('route-line-casing');
+        }
         if (map.getLayer('route-line-layer')) {
           map.removeLayer('route-line-layer');
         }
@@ -453,6 +540,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     userLocation?.longitude,
     nearbyCouriers,
     orderMarkers,
+    isSearching,
     streetRoute,
     mapLoaded,
   ]);

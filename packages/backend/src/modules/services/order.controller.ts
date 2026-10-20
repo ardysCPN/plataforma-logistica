@@ -114,6 +114,20 @@ export const orderController = {
     }
   },
 
+  async getMyActive(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const activeData = await orderService.getActiveOrderForUser(req.user.id, req.user.role);
+      res.json(activeData);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error obteniendo orden activa';
+      res.status(500).json({ error: message });
+    }
+  },
+
   async rateOrder(req: Request, res: Response): Promise<void> {
     try {
       if (!req.user) {

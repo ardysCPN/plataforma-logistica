@@ -17,6 +17,7 @@ orderRouter.post(
 orderRouter.get('/nearby-couriers', authenticateJWT, orderController.getNearbyCouriers);
 orderRouter.get('/available', authenticateJWT, orderController.getAvailable);
 orderRouter.get('/history', authenticateJWT, orderController.getHistory);
+orderRouter.get('/my-active', authenticateJWT, orderController.getMyActive);
 orderRouter.get('/public-track/:id', orderController.getPublicTrack);
 
 orderRouter.get('/:id', authenticateJWT, orderController.getOrder);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, Linking, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UniversalMap } from '../../components/map/UniversalMap';
@@ -33,6 +33,8 @@ export default function CourierHomeScreen() {
   const [courierLocation, setCourierLocation] = useState<GeoPoint | null>(() => locationTracker.getCachedLocation());
   const [submittedBids, setSubmittedBids] = useState<Record<string, number>>({});
   const [locatingGps, setLocatingGps] = useState(false);
+  const [previewOrder, setPreviewOrder] = useState<SocketOrderNewAvailablePayload | null>(null);
+  const lastChatMsgIdRef = useRef<string | null>(null);
 
   // Modo Oscuro (Feature 7)
   const [darkMode, setDarkMode] = useState(false);
@@ -108,6 +110,19 @@ export default function CourierHomeScreen() {
       })
       .catch((err) => console.warn('Error cargando órdenes disponibles:', err));
 
+    // Cargar órdenes activas previas asignadas al conductor (Persistencia ante recarga)
+    api
+      .get<ServiceOrder[]>('/api/orders/my-active')
+      .then((res) => {
+        if (isMounted && Array.isArray(res.data) && res.data.length > 0) {
+          setActiveOrders(res.data);
+          const socket = getSocket();
+          res.data.forEach((o) => socket.emit('order:join', o.id));
+          locationTracker.startTracking(res.data.map((o) => o.id));
+        }
+      })
+      .catch((err) => console.warn('No hay órdenes activas asignadas:', err));
+
     const socket = getSocket();
 
     const handleNewOrder = (order: SocketOrderNewAvailablePayload) => {
@@ -161,6 +176,9 @@ export default function CourierHomeScreen() {
 
     const handleChatReceive = (msg: any) => {
       if (msg.senderId !== user?.id) {
+        if (msg.id && lastChatMsgIdRef.current === msg.id) return;
+        lastChatMsgIdRef.current = msg.id || null;
+
         setUnreadChatsCount((prev) => prev + 1);
         if (!chatModalVisible) {
           setActiveNotification({
@@ -300,15 +318,15 @@ export default function CourierHomeScreen() {
       return 0;
     });
 
-  // Determinar ruta según fase activa
+  // Determinar ruta según fase activa o preview de orden disponible
   const currentActive = activeOrders[0];
   const isHeadingToPickup = currentActive && currentActive.status === 'ACCEPTED';
   const mapOrigin = isHeadingToPickup
     ? courierLocation || currentActive.originPoint
-    : currentActive?.originPoint;
+    : currentActive?.originPoint || previewOrder?.originPoint;
   const mapDestination = isHeadingToPickup
     ? currentActive?.originPoint
-    : currentActive?.destinationPoint;
+    : currentActive?.destinationPoint || previewOrder?.destinationPoint;
 
   return (
     <View className={`flex-1 ${darkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
@@ -655,9 +673,33 @@ export default function CourierHomeScreen() {
                 <Text className={`text-xs mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                   De: <Text className={`font-medium ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{order.originAddress}</Text>
                 </Text>
-                <Text className={`text-xs font-semibold mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-800'}`}>
+                <Text className={`text-xs font-semibold mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-800'}`}>
                   A: <Text className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{order.destinationAddress}</Text>
                 </Text>
+
+                {/* Botón para previsualizar ruta en el mapa antes de aceptar */}
+                <View className="flex-row items-center justify-between mb-3">
+                  <TouchableOpacity
+                    onPress={() => setPreviewOrder(previewOrder?.orderId === order.orderId ? null : order)}
+                    className={`px-3 py-1 rounded-full border flex-row items-center gap-1.5 ${
+                      previewOrder?.orderId === order.orderId
+                        ? 'bg-blue-600 border-blue-600'
+                        : darkMode
+                        ? 'bg-slate-800 border-slate-700'
+                        : 'bg-blue-50 border-blue-200'
+                    }`}
+                  >
+                    <Text className={`text-[11px] font-bold ${
+                      previewOrder?.orderId === order.orderId
+                        ? 'text-white'
+                        : darkMode
+                        ? 'text-blue-400'
+                        : 'text-blue-700'
+                    }`}>
+                      {previewOrder?.orderId === order.orderId ? '🗺️ Ocultar Ruta' : '🗺️ Ver Recorrido en Mapa'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
                 {order.descriptionNotes ? (
                   <Text className={`text-xs p-2.5 rounded-xl mb-3 ${darkMode ? 'bg-slate-800/80 text-slate-300' : 'bg-slate-50 text-slate-600'}`}>
@@ -902,6 +944,19 @@ export default function CourierHomeScreen() {
         visible={historyVisible}
         onClose={() => setHistoryVisible(false)}
         isCourier={true}
+        onSelectActiveOrder={async (orderId) => {
+          try {
+            const res = await api.get<ServiceOrder>(`/api/orders/${orderId}`);
+            if (res.data) {
+              setActiveOrders((prev) => [res.data, ...prev.filter((o) => o.id !== orderId)]);
+              const socket = getSocket();
+              socket.emit('order:join', res.data.id);
+              locationTracker.startTracking([res.data.id]);
+            }
+          } catch (err) {
+            console.warn('Error al restaurar orden de conductor:', err);
+          }
+        }}
       />
 
       <PqrModal

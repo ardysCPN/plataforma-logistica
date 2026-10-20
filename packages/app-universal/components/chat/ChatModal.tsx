@@ -44,7 +44,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
     const handleMessage = (msg: ChatMessage) => {
       if (msg.orderId === orderId) {
-        setMessages((prev) => [...prev, msg]);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
       }
     };
 

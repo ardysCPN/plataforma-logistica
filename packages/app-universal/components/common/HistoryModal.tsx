@@ -11,6 +11,7 @@ interface HistoryItem {
   destinationAddress: string;
   price: number;
   commissionAmount: number;
+  deliveryPin?: string;
   createdAt: string;
   completedAt?: string;
   counterpartName: string;
@@ -24,9 +25,15 @@ interface HistoryModalProps {
   visible: boolean;
   onClose: () => void;
   isCourier?: boolean;
+  onSelectActiveOrder?: (orderId: string) => void;
 }
 
-export const HistoryModal: React.FC<HistoryModalProps> = ({ visible, onClose, isCourier = false }) => {
+export const HistoryModal: React.FC<HistoryModalProps> = ({
+  visible,
+  onClose,
+  isCourier = false,
+  onSelectActiveOrder,
+}) => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedPqrOrderId, setSelectedPqrOrderId] = useState<string | null>(null);
@@ -88,6 +95,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ visible, onClose, is
               history.map((item) => {
                 const isCompleted = item.status === 'COMPLETED';
                 const isCancelled = item.status === 'CANCELLED';
+                const isActive = !isCompleted && !isCancelled;
                 const dateFormatted = new Date(item.createdAt).toLocaleDateString('es-CO', {
                   day: 'numeric',
                   month: 'short',
@@ -98,7 +106,9 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ visible, onClose, is
                 return (
                   <View
                     key={item.id}
-                    className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-3"
+                    className={`border rounded-2xl p-4 mb-3 ${
+                      isActive ? 'bg-emerald-50/50 border-emerald-300 shadow-sm' : 'bg-slate-50 border-slate-200'
+                    }`}
                   >
                     <View className="flex-row items-center justify-between mb-2">
                       <View className="flex-row items-center gap-1.5">
@@ -113,23 +123,23 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ visible, onClose, is
 
                       <View
                         className={`px-2.5 py-0.5 rounded-full ${
-                          isCompleted
-                            ? 'bg-emerald-100'
-                            : isCancelled
-                            ? 'bg-rose-100'
-                            : 'bg-amber-100'
+                          isActive
+                            ? 'bg-emerald-600'
+                            : isCompleted
+                            ? 'bg-slate-200'
+                            : 'bg-rose-100'
                         }`}
                       >
                         <Text
                           className={`text-[10px] font-black uppercase ${
-                            isCompleted
-                              ? 'text-emerald-700'
-                              : isCancelled
-                              ? 'text-rose-700'
-                              : 'text-amber-700'
+                            isActive
+                              ? 'text-white'
+                              : isCompleted
+                              ? 'text-slate-700'
+                              : 'text-rose-700'
                           }`}
                         >
-                          {item.status}
+                          {isActive ? `🟢 EN CURSO (${item.status})` : isCompleted ? '✅ FINALIZADO' : '❌ CANCELADO'}
                         </Text>
                       </View>
                     </View>
@@ -141,6 +151,28 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ visible, onClose, is
                     <Text className="text-xs text-slate-600 mb-2.5" numberOfLines={1}>
                       A: <Text className="font-semibold text-slate-900">{item.destinationAddress}</Text>
                     </Text>
+
+                    {/* Código PIN de Entrega para cerrar el viaje */}
+                    {item.deliveryPin && (
+                      <View className="bg-white border border-emerald-300 rounded-xl p-2.5 mb-2.5 flex-row items-center justify-between shadow-xs">
+                        <View className="flex-row items-center gap-2 flex-1 mr-2">
+                          <Text className="text-lg">🔐</Text>
+                          <View className="flex-1">
+                            <Text className="text-[10px] text-emerald-900 font-extrabold uppercase tracking-wider">
+                              PIN de Entrega
+                            </Text>
+                            <Text className="text-[11px] text-emerald-700 font-medium">
+                              {isActive ? 'Díselo al conductor para recibir el pedido' : 'PIN de confirmación'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View className="bg-emerald-700 px-3 py-1.5 rounded-lg shadow-sm">
+                          <Text className="text-white font-black text-base tracking-widest">
+                            {item.deliveryPin}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
 
                     {/* Calificación y Comentarios recibidos */}
                     {item.ratingReceived && (
@@ -168,6 +200,21 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ visible, onClose, is
                         ${item.price?.toLocaleString()} COP
                       </Text>
                     </View>
+
+                    {/* Botón para retomar y ver en pantalla principal si está activo */}
+                    {isActive && onSelectActiveOrder && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          onSelectActiveOrder(item.id);
+                          onClose();
+                        }}
+                        className="mt-2.5 bg-primary py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-2 shadow-sm active:opacity-90"
+                      >
+                        <Text className="text-white text-xs font-black">
+                          🚀 Ver Viaje en Pantalla Principal
+                        </Text>
+                      </TouchableOpacity>
+                    )}
 
                     {/* Botón de Reporte PQR / Objeto Olvidado */}
                     <TouchableOpacity

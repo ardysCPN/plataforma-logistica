@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UniversalMap, NearbyCourierMarker } from '../../components/map/UniversalMap';
@@ -76,6 +76,7 @@ export default function ClientHomeScreen() {
   const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const lastChatMsgIdRef = useRef<string | null>(null);
 
   // Función explícita para capturar GPS del cliente
   const handleCaptureGps = async () => {
@@ -132,6 +133,64 @@ export default function ClientHomeScreen() {
       isMounted = false;
     };
   }, []);
+
+  // Restaurar viaje activo si el cliente recarga la página o reingresa a la app
+  useEffect(() => {
+    let isMounted = true;
+    api.get<any>('/api/orders/my-active')
+      .then((res) => {
+        if (!isMounted || !res.data?.order) return;
+        const o = res.data.order;
+        setActiveOrder(o);
+        if (res.data.courier) setAssignedCourier(res.data.courier);
+        if (res.data.bids) setIncomingBids(res.data.bids);
+        if (o.originPoint) {
+          setOriginPoint(o.originPoint);
+          if (o.originAddress) setOriginAddress(o.originAddress);
+        }
+        if (o.destinationPoint) {
+          setDestPoint(o.destinationPoint);
+          if (o.destinationAddress) setDestAddress(o.destinationAddress);
+        }
+        const socket = getSocket();
+        socket.emit('order:join', o.id);
+      })
+      .catch((err) => console.warn('No hay orden activa para restaurar:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSelectActiveOrderFromHistory = async (orderId: string) => {
+    try {
+      setLoading(true);
+      const res = await api.get<any>('/api/orders/my-active');
+      if (res.data?.order && res.data.order.id === orderId) {
+        const o = res.data.order;
+        setActiveOrder(o);
+        if (res.data.courier) setAssignedCourier(res.data.courier);
+        if (res.data.bids) setIncomingBids(res.data.bids);
+        if (o.originPoint) setOriginPoint(o.originPoint);
+        if (o.destinationPoint) setDestPoint(o.destinationPoint);
+        const socket = getSocket();
+        socket.emit('order:join', o.id);
+      } else {
+        const directRes = await api.get<ServiceOrder>(`/api/orders/${orderId}`);
+        if (directRes.data) {
+          setActiveOrder(directRes.data);
+          if (directRes.data.originPoint) setOriginPoint(directRes.data.originPoint);
+          if (directRes.data.destinationPoint) setDestPoint(directRes.data.destinationPoint);
+          const socket = getSocket();
+          socket.emit('order:join', directRes.data.id);
+        }
+      }
+    } catch (err) {
+      console.warn('Error al restaurar orden desde historial:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 2. Consulta y Simulación de Conductores Cercanos
   const fetchNearbyCouriers = async (lat: number, lng: number) => {
@@ -250,6 +309,10 @@ export default function ClientHomeScreen() {
 
     const handleChatReceive = (msg: any) => {
       if (msg.senderId !== user?.id) {
+        // Evitar procesar el mismo mensaje dos veces en pantalla
+        if (msg.id && lastChatMsgIdRef.current === msg.id) return;
+        lastChatMsgIdRef.current = msg.id || null;
+
         setUnreadChatsCount((prev) => prev + 1);
         if (!chatVisible) {
           setActiveNotification({
@@ -499,6 +562,7 @@ export default function ClientHomeScreen() {
           courierLocation={courierLocation}
           userLocation={userLocation}
           nearbyCouriers={nearbyCouriers}
+          isSearching={activeOrder?.status === 'SEARCHING'}
           darkMode={darkMode}
           onMapClick={(point) => {
             if (!activeOrder) {
@@ -918,6 +982,7 @@ export default function ClientHomeScreen() {
         visible={historyVisible}
         onClose={() => setHistoryVisible(false)}
         isCourier={false}
+        onSelectActiveOrder={handleSelectActiveOrderFromHistory}
       />
 
       <PqrModal

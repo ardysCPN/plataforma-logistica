@@ -383,6 +383,136 @@ export const orderService = {
     }));
   },
 
+  async getActiveOrderForUser(userId: string, role: string) {
+    if (role === 'CLIENT') {
+      const res = await db.query(
+        `SELECT so.id, so.client_id as "clientId", so.courier_id as "courierId",
+                so.service_type as "serviceType", so.status,
+                so.origin_address as "originAddress",
+                ST_Y(so.origin_point::geometry) as "originLat",
+                ST_X(so.origin_point::geometry) as "originLng",
+                so.destination_address as "destinationAddress",
+                ST_Y(so.destination_point::geometry) as "destLat",
+                ST_X(so.destination_point::geometry) as "destLng",
+                so.description_notes as "descriptionNotes",
+                so.estimated_purchase_cost as "estimatedPurchaseCost",
+                so.offered_price as "offeredPrice",
+                so.agreed_price as "agreedPrice",
+                so.commission_amount as "commissionAmount",
+                so.delivery_pin as "deliveryPin",
+                so.created_at as "createdAt",
+                u_courier.full_name as "courierName",
+                u_courier.phone as "courierPhone",
+                u_courier.rating_avg as "courierRating",
+                cp.vehicle_type as "vehicleType",
+                cp.vehicle_plate as "vehiclePlate"
+         FROM service_orders so
+         LEFT JOIN users u_courier ON so.courier_id = u_courier.id
+         LEFT JOIN courier_profiles cp ON u_courier.id = cp.user_id
+         WHERE so.client_id = $1 AND so.status NOT IN ('COMPLETED', 'CANCELLED')
+         ORDER BY so.created_at DESC
+         LIMIT 1`,
+        [userId]
+      );
+
+      if (res.rows.length === 0) return null;
+      const r = res.rows[0];
+
+      // Si está en SEARCHING, traer las ofertas que le han llegado
+      let bids: any[] = [];
+      if (r.status === 'SEARCHING') {
+        const bidsRes = await db.query(
+          `SELECT ob.id as "bidId", ob.courier_id as "courierId", ob.bid_amount as "bidAmount",
+                  ob.eta_minutes as "etaMinutes", u.full_name as "courierName",
+                  u.rating_avg as "courierRating", cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate"
+           FROM order_bids ob
+           JOIN users u ON ob.courier_id = u.id
+           JOIN courier_profiles cp ON u.id = cp.user_id
+           WHERE ob.order_id = $1 AND ob.status = 'PENDING'`,
+          [r.id]
+        );
+        bids = bidsRes.rows;
+      }
+
+      return {
+        order: {
+          id: r.id,
+          clientId: r.clientId,
+          courierId: r.courierId,
+          serviceType: r.serviceType,
+          status: r.status,
+          originAddress: r.originAddress,
+          originPoint: { latitude: Number(r.originLat), longitude: Number(r.originLng) },
+          destinationAddress: r.destinationAddress,
+          destinationPoint: { latitude: Number(r.destLat), longitude: Number(r.destLng) },
+          descriptionNotes: r.descriptionNotes,
+          estimatedPurchaseCost: Number(r.estimatedPurchaseCost),
+          offeredPrice: Number(r.offeredPrice),
+          agreedPrice: r.agreedPrice ? Number(r.agreedPrice) : null,
+          commissionAmount: Number(r.commissionAmount),
+          deliveryPin: r.deliveryPin,
+          createdAt: r.createdAt,
+        },
+        courier: r.courierId ? {
+          id: r.courierId,
+          fullName: r.courierName,
+          phone: r.courierPhone,
+          ratingAvg: Number(r.courierRating || 5.0),
+          vehicleType: r.vehicleType,
+          vehiclePlate: r.vehiclePlate,
+        } : null,
+        bids,
+      };
+    } else {
+      // Conductor: órdenes activas asignadas
+      const res = await db.query(
+        `SELECT so.id, so.client_id as "clientId", so.courier_id as "courierId",
+                so.service_type as "serviceType", so.status,
+                so.origin_address as "originAddress",
+                ST_Y(so.origin_point::geometry) as "originLat",
+                ST_X(so.origin_point::geometry) as "originLng",
+                so.destination_address as "destinationAddress",
+                ST_Y(so.destination_point::geometry) as "destLat",
+                ST_X(so.destination_point::geometry) as "destLng",
+                so.description_notes as "descriptionNotes",
+                so.estimated_purchase_cost as "estimatedPurchaseCost",
+                so.offered_price as "offeredPrice",
+                so.agreed_price as "agreedPrice",
+                so.commission_amount as "commissionAmount",
+                so.delivery_pin as "deliveryPin",
+                so.created_at as "createdAt",
+                u_client.full_name as "clientName",
+                u_client.phone as "clientPhone"
+         FROM service_orders so
+         JOIN users u_client ON so.client_id = u_client.id
+         WHERE so.courier_id = $1 AND so.status IN ('ACCEPTED', 'ARRIVED_AT_ORIGIN', 'PURCHASING', 'PICKED_UP', 'IN_TRANSIT')
+         ORDER BY so.created_at ASC`,
+        [userId]
+      );
+
+      return res.rows.map((r: any) => ({
+        id: r.id,
+        clientId: r.clientId,
+        courierId: r.courierId,
+        serviceType: r.serviceType,
+        status: r.status,
+        originAddress: r.originAddress,
+        originPoint: { latitude: Number(r.originLat), longitude: Number(r.originLng) },
+        destinationAddress: r.destinationAddress,
+        destinationPoint: { latitude: Number(r.destLat), longitude: Number(r.destLng) },
+        descriptionNotes: r.descriptionNotes,
+        estimatedPurchaseCost: Number(r.estimatedPurchaseCost),
+        offeredPrice: Number(r.offeredPrice),
+        agreedPrice: r.agreedPrice ? Number(r.agreedPrice) : null,
+        commissionAmount: Number(r.commissionAmount),
+        deliveryPin: r.deliveryPin,
+        createdAt: r.createdAt,
+        clientName: r.clientName,
+        clientPhone: r.clientPhone,
+      }));
+    }
+  },
+
   async getMyOrderHistory(userId: string, role: string) {
     const isCourier = role === 'COURIER';
     const query = `
@@ -390,6 +520,7 @@ export const orderService = {
              so.origin_address as "originAddress", so.destination_address as "destinationAddress",
              COALESCE(so.agreed_price, so.offered_price) as price,
              so.commission_amount as "commissionAmount",
+             so.delivery_pin as "deliveryPin",
              so.created_at as "createdAt", so.completed_at as "completedAt",
              u_client.full_name as "clientName",
              u_courier.full_name as "courierName",
@@ -415,6 +546,7 @@ export const orderService = {
       destinationAddress: r.destinationAddress,
       price: Number(r.price),
       commissionAmount: Number(r.commissionAmount || 0),
+      deliveryPin: r.deliveryPin,
       createdAt: r.createdAt,
       completedAt: r.completedAt,
       counterpartName: isCourier ? r.clientName : (r.courierName || 'Pendiente'),

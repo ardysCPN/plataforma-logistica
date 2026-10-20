@@ -98,13 +98,14 @@ export const initSocketManager = (io: SocketIOServer) => {
 
       try {
         const savedMessage = await chatService.saveMessage(user.id, payload);
-        io.to(`order:${payload.orderId}`).emit(SOCKET_EVENTS.CHAT_RECEIVE, savedMessage);
-
-        // Notificación push-like directa al destinatario garantizado
         const recipientId = (savedMessage as any).recipientId;
+
+        // Emitir a la sala de la orden y al usuario destinatario de forma unificada (Socket.io deduplica automáticamente)
+        let broadcaster = io.to(`order:${payload.orderId}`);
         if (recipientId) {
-          io.to(`user:${recipientId}`).emit(SOCKET_EVENTS.CHAT_RECEIVE, savedMessage);
+          broadcaster = broadcaster.to(`user:${recipientId}`);
         }
+        broadcaster.emit(SOCKET_EVENTS.CHAT_RECEIVE, savedMessage);
       } catch (err: unknown) {
         socket.emit('error', {
           event: SOCKET_EVENTS.CHAT_SEND,
