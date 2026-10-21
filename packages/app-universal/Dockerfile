@@ -22,15 +22,14 @@ ENV EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
 
 # Copiar configuraciones base y definiciones de workspaces
 COPY package*.json tsconfig.base.json ./
-COPY packages/shared/package*.json ./packages/shared/
+COPY packages/shared ./packages/shared
 COPY packages/app-universal/package*.json ./packages/app-universal/
 COPY packages/backend/package*.json ./packages/backend/
 
 # Instalar dependencias completas del monorepo
 RUN npm ci
 
-# Copiar código fuente
-COPY packages/shared ./packages/shared
+# Copiar código fuente restante
 COPY packages/app-universal ./packages/app-universal
 
 # Compilar librería compartida
