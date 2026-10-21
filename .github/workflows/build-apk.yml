@@ -21,10 +21,10 @@ jobs:
       - name: Checkout del Repositorio
         uses: actions/checkout@v4
 
-      - name: Configurar Node.js 20
+      - name: Configurar Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Instalar Dependencias del Monorepo
@@ -35,6 +35,11 @@ jobs:
         with:
           expo-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Vincular Proyecto en Expo (EAS Init)
+        working-directory: packages/app-universal
+        run: |
+          npx eas-cli init --account ardyscpn --non-interactive || true
 
       - name: Lanzar Compilación APK en la Nube de Expo
         working-directory: packages/app-universal
