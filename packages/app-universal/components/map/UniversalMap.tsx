@@ -36,6 +36,7 @@ interface UniversalMapProps {
   isSearching?: boolean;
   darkMode?: boolean;
   onMapClick?: (point: GeoPoint) => void;
+  onRouteCalculated?: (coords: [number, number][]) => void;
   className?: string;
 }
 
@@ -53,6 +54,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
   isSearching = false,
   darkMode = false,
   onMapClick,
+  onRouteCalculated,
   className = '',
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -72,10 +74,12 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
           distanceKm: 0,
           durationMinutes: 0,
         });
+        onRouteCalculated?.(routeCoordinates);
       } else {
         routingService.getStreetRoute(origin, destination, intermediateStops).then((res) => {
           if (isCurrent) {
             setStreetRoute(res);
+            onRouteCalculated?.(res.coordinates);
           }
         });
       }

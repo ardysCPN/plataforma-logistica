@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, Linking, Act
 import { useRouter } from 'expo-router';
 import { UniversalMap } from '../../components/map/UniversalMap';
 import { Button } from '../../components/common/Button';
+import { Input } from '../../components/common/Input';
 import { PinModal } from '../../components/common/PinModal';
 import { ChatModal } from '../../components/chat/ChatModal';
 import { ChatsModal } from '../../components/chat/ChatsModal';
@@ -57,6 +58,8 @@ export default function CourierHomeScreen() {
   const [activeNotification, setActiveNotification] = useState<BannerNotification | null>(null);
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
   const [loadingAction, setLoadingAction] = useState(false);
+  const [counterOfferOrderId, setCounterOfferOrderId] = useState<string | null>(null);
+  const [customCounterOffer, setCustomCounterOffer] = useState<string>('');
 
   // Capturar GPS explícitamente
   const handleCaptureGps = async () => {
@@ -727,6 +730,96 @@ export default function CourierHomeScreen() {
                       </Text>
                     </View>
                   </View>
+                ) : counterOfferOrderId === order.orderId ? (
+                  <View className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mt-1">
+                    <View className="flex-row items-center justify-between mb-2">
+                      <Text className="text-xs font-black text-slate-800">
+                        Tu Contraoferta (Tarifa Base: ${order.offeredPrice.toLocaleString('es-CO')} COP):
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => setCounterOfferOrderId(null)}
+                        className="px-2 py-0.5 rounded-lg bg-slate-200 active:bg-slate-300"
+                      >
+                        <Text className="text-[11px] font-bold text-slate-600">✕ Cancelar</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Chips de sugerencias rápidas: +$500 (Sugerido), +$1.000, +$2.000, +$3.000 */}
+                    <Text className="text-[10px] text-slate-500 font-bold mb-1.5 uppercase">
+                      Incrementos rápidos recomendados:
+                    </Text>
+                    <View className="flex-row items-center gap-1.5 mb-2.5 flex-wrap">
+                      {[500, 1000, 2000, 3000].map((addAmount) => {
+                        const totalAmount = order.offeredPrice + addAmount;
+                        const isSelected = customCounterOffer === totalAmount.toString();
+                        return (
+                          <TouchableOpacity
+                            key={addAmount}
+                            onPress={() => setCustomCounterOffer(totalAmount.toString())}
+                            className={`px-3 py-1.5 rounded-xl border flex-row items-center gap-1 ${
+                              isSelected
+                                ? 'bg-primary border-primary shadow-sm'
+                                : 'bg-white border-slate-300 active:bg-slate-100'
+                            }`}
+                          >
+                            <Text
+                              className={`text-xs font-black ${
+                                isSelected ? 'text-white' : 'text-slate-800'
+                              }`}
+                            >
+                              +${addAmount.toLocaleString('es-CO')}
+                            </Text>
+                            {addAmount === 500 && (
+                              <Text
+                                className={`text-[9px] font-extrabold px-1 py-0.5 rounded ${
+                                  isSelected ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-900'
+                                }`}
+                              >
+                                Sugerido
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {/* Input para valor personalizado */}
+                    <View className="mb-2.5">
+                      <Input
+                        label="O escribe el valor total que deseas cobrar ($ COP)"
+                        keyboardType="numeric"
+                        value={
+                          customCounterOffer
+                            ? parseInt(customCounterOffer.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO')
+                            : ''
+                        }
+                        onChangeText={(val: string) => {
+                          const clean = val.replace(/\D/g, '');
+                          setCustomCounterOffer(clean);
+                        }}
+                        placeholder="Ej: 5.500"
+                      />
+                    </View>
+
+                    <Button
+                      title={`Enviar Contraoferta: $${(
+                        parseInt(customCounterOffer.replace(/\D/g, '') || '0', 10)
+                      ).toLocaleString('es-CO')} COP 🚀`}
+                      variant="primary"
+                      onPress={() => {
+                        const finalAmount = parseInt(customCounterOffer.replace(/\D/g, ''), 10);
+                        if (isNaN(finalAmount) || finalAmount <= 0) {
+                          if (Platform.OS === 'web') alert('Por favor ingresa un monto válido');
+                          else Alert.alert('Aviso', 'Por favor ingresa un monto válido');
+                          return;
+                        }
+                        handleSubmitBid(order.orderId, finalAmount);
+                        setCounterOfferOrderId(null);
+                      }}
+                      loading={loadingAction}
+                      className="py-2.5"
+                    />
+                  </View>
                 ) : (
                   <View className="flex-row gap-2">
                     {order.serviceType === 'ERRAND' ? (
@@ -740,16 +833,19 @@ export default function CourierHomeScreen() {
                     ) : (
                       <>
                         <Button
-                          title="Aceptar Tarifa"
+                          title={`Aceptar Tarifa ($${order.offeredPrice.toLocaleString('es-CO')})`}
                           variant="primary"
                           onPress={() => handleSubmitBid(order.orderId, order.offeredPrice)}
                           loading={loadingAction}
                           className="flex-1 py-2.5"
                         />
                         <Button
-                          title="Contraofertar +$2k"
+                          title="Contraofertar 💬"
                           variant="outline"
-                          onPress={() => handleSubmitBid(order.orderId, order.offeredPrice + 2000)}
+                          onPress={() => {
+                            setCounterOfferOrderId(order.orderId);
+                            setCustomCounterOffer((order.offeredPrice + 500).toString());
+                          }}
                           loading={loadingAction}
                           className="flex-1 py-2.5"
                         />

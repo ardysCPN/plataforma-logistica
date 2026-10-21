@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator, Linking, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UniversalMap, NearbyCourierMarker } from '../../components/map/UniversalMap';
 import { Input } from '../../components/common/Input';
@@ -18,6 +18,7 @@ import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { locationTracker } from '../../services/locationTracker';
 import { soundNotification } from '../../services/soundNotification';
+import { routeDeviationService } from '../../services/routeDeviationService';
 import {
   ServiceType,
   ServiceOrder,
@@ -79,12 +80,24 @@ export default function ClientHomeScreen() {
   const [cancelling, setCancelling] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => soundNotification.isSoundEnabled());
   const [isCurtainCollapsed, setIsCurtainCollapsed] = useState(false);
+  const [activeRouteCoords, setActiveRouteCoords] = useState<[number, number][]>([]);
+  const [deviationAlert, setDeviationAlert] = useState<{
+    visible: boolean;
+    distanceMeters: number;
+  }>({ visible: false, distanceMeters: 0 });
+
   const lastChatMsgIdRef = useRef<string | null>(null);
   const activeOrderRef = useRef<ServiceOrder | null>(activeOrder);
+  const activeRouteCoordsRef = useRef<[number, number][]>([]);
+  const consecutiveDeviationsRef = useRef<number>(0);
 
   useEffect(() => {
     activeOrderRef.current = activeOrder;
   }, [activeOrder]);
+
+  useEffect(() => {
+    activeRouteCoordsRef.current = activeRouteCoords;
+  }, [activeRouteCoords]);
 
   // Función explícita para capturar GPS del cliente
   const handleCaptureGps = async () => {
@@ -341,6 +354,48 @@ export default function ClientHomeScreen() {
       const current = activeOrderRef.current;
       if (!current || feed.orderId === current.id) {
         setCourierLocation({ latitude: feed.latitude, longitude: feed.longitude, bearing: feed.bearing });
+
+        // Verificación de Desvío de Ruta en tiempo real
+        if (
+          current &&
+          (current.status === 'ACCEPTED' ||
+            current.status === 'ARRIVED_AT_ORIGIN' ||
+            current.status === 'PICKED_UP' ||
+            current.status === 'IN_TRANSIT')
+        ) {
+          const routeToCheck =
+            activeRouteCoordsRef.current.length > 0
+              ? activeRouteCoordsRef.current
+              : current.originPoint && current.destinationPoint
+              ? [
+                  [current.originPoint.longitude, current.originPoint.latitude] as [number, number],
+                  [current.destinationPoint.longitude, current.destinationPoint.latitude] as [number, number],
+                ]
+              : [];
+
+          if (routeToCheck.length >= 2) {
+            const check = routeDeviationService.checkDeviation(
+              { latitude: feed.latitude, longitude: feed.longitude },
+              routeToCheck,
+              current.destinationPoint,
+              450 // Margen de 450 metros
+            );
+
+            if (check.isDeviated) {
+              consecutiveDeviationsRef.current += 1;
+              if (consecutiveDeviationsRef.current >= 2) {
+                // Al menos 2 pings consecutivos para descartar saltos temporales
+                setDeviationAlert({
+                  visible: true,
+                  distanceMeters: Math.round(check.distanceMeters),
+                });
+                soundNotification.playChime();
+              }
+            } else {
+              consecutiveDeviationsRef.current = 0;
+            }
+          }
+        }
       }
     };
 
@@ -411,8 +466,8 @@ export default function ClientHomeScreen() {
         destinationAddress: destAddress,
         destinationPoint: destPoint,
         descriptionNotes: finalDescription || undefined,
-        estimatedPurchaseCost: serviceType === 'ERRAND' ? Number(estimatedPurchase) : 0,
-        offeredPrice: Number(offeredPrice),
+        estimatedPurchaseCost: serviceType === 'ERRAND' ? Number(estimatedPurchase.replace(/\D/g, '') || 0) : 0,
+        offeredPrice: Number(offeredPrice.replace(/\D/g, '') || 0),
       });
 
       setActiveOrder(res.data);
@@ -591,6 +646,7 @@ export default function ClientHomeScreen() {
           nearbyCouriers={nearbyCouriers}
           isSearching={activeOrder?.status === 'SEARCHING'}
           darkMode={darkMode}
+          onRouteCalculated={(coords) => setActiveRouteCoords(coords)}
           onMapClick={(point) => {
             if (!activeOrder) {
               setDestPoint(point);
@@ -636,7 +692,7 @@ export default function ClientHomeScreen() {
                 </Text>
               </View>
               <Text className="text-primary font-black text-lg">
-                ${activeOrder.agreedPrice || activeOrder.offeredPrice} COP
+                ${Number(activeOrder.agreedPrice || activeOrder.offeredPrice).toLocaleString('es-CO')} COP
               </Text>
             </View>
 
@@ -688,7 +744,7 @@ export default function ClientHomeScreen() {
                       </View>
                       <View className="items-end gap-1.5">
                         <Text className="text-base font-black text-slate-900">
-                          ${bid.bidAmount?.toLocaleString()} COP
+                          ${Number(bid.bidAmount || 0).toLocaleString('es-CO')} COP
                         </Text>
                         <Button
                           title="Aceptar"
@@ -949,8 +1005,16 @@ export default function ClientHomeScreen() {
                 <Input
                   label="Monto Estimado de los Productos ($ COP)"
                   keyboardType="numeric"
-                  value={estimatedPurchase}
-                  onChangeText={setEstimatedPurchase}
+                  value={
+                    estimatedPurchase
+                      ? parseInt(estimatedPurchase.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO')
+                      : ''
+                  }
+                  onChangeText={(val) => {
+                    const clean = val.replace(/\D/g, '');
+                    setEstimatedPurchase(clean);
+                  }}
+                  placeholder="Ej: 25.000"
                 />
               </>
             ) : (
@@ -962,12 +1026,51 @@ export default function ClientHomeScreen() {
               />
             )}
 
-            <Input
-              label="Tu Oferta de Tarifa ($ COP) *"
-              keyboardType="numeric"
-              value={offeredPrice}
-              onChangeText={setOfferedPrice}
-            />
+            <View className="mb-2">
+              <Input
+                label="Tu Oferta de Tarifa ($ COP) *"
+                keyboardType="numeric"
+                value={
+                  offeredPrice
+                    ? parseInt(offeredPrice.replace(/\D/g, '') || '0', 10).toLocaleString('es-CO')
+                    : ''
+                }
+                onChangeText={(val) => {
+                  const clean = val.replace(/\D/g, '');
+                  setOfferedPrice(clean);
+                }}
+                placeholder="Ej: 3.000"
+              />
+
+              {/* Chips rápidos con tarifas habituales colombianas */}
+              <Text className="text-[10px] text-slate-500 font-bold mt-1.5 mb-1 uppercase">
+                Sugerencias rápidas:
+              </Text>
+              <View className="flex-row items-center gap-1.5 flex-wrap">
+                {[3000, 5000, 8000, 10000, 15000, 20000].map((preset) => {
+                  const isSelected = offeredPrice === preset.toString();
+                  return (
+                    <TouchableOpacity
+                      key={preset}
+                      onPress={() => setOfferedPrice(preset.toString())}
+                      className={`px-3 py-1.5 rounded-xl border ${
+                        isSelected
+                          ? 'bg-primary border-primary shadow-sm'
+                          : 'bg-slate-100 border-slate-300 active:bg-slate-200'
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-bold ${
+                          isSelected ? 'text-white font-black' : 'text-slate-800'
+                        }`}
+                      >
+                        ${preset.toLocaleString('es-CO')}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
 
             <Button
               title="Publicar Solicitud"
@@ -1040,6 +1143,103 @@ export default function ClientHomeScreen() {
         isCourier={false}
         onClose={() => setPqrModalVisible(false)}
       />
+
+      {/* Modal de Alerta de Desvío de Ruta (Seguridad y Notificación al Cliente) */}
+      <Modal
+        visible={deviationAlert.visible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeviationAlert((prev) => ({ ...prev, visible: false }))}
+      >
+        <View className="flex-1 justify-center items-center bg-black/75 px-4">
+          <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border-2 border-amber-400">
+            <View className="w-16 h-16 bg-amber-100 rounded-full items-center justify-center self-center mb-3">
+              <Text className="text-3xl">⚠️</Text>
+            </View>
+
+            <Text className="text-xl font-black text-slate-900 text-center mb-1">
+              Alerta de Desvío de Ruta
+            </Text>
+
+            <Text className="text-xs text-slate-600 text-center mb-4 leading-relaxed">
+              Detectamos que el conductor se ha alejado{' '}
+              <Text className="font-extrabold text-amber-700">
+                ~{deviationAlert.distanceMeters} metros
+              </Text>{' '}
+              del trayecto oficial pactado hacia tu destino. ¿Deseas verificar la ruta, contactarlo o alertar a seguridad?
+            </Text>
+
+            <View className="gap-2">
+              {assignedCourier?.phone ? (
+                <Button
+                  title="📞 Llamar al Conductor"
+                  variant="primary"
+                  onPress={() => {
+                    Linking.openURL(`tel:${assignedCourier.phone}`).catch(() => {});
+                  }}
+                  className="py-2.5"
+                />
+              ) : null}
+
+              <Button
+                title="💬 Enviar Mensaje por Chat"
+                variant="outline"
+                onPress={() => {
+                  setDeviationAlert((prev) => ({ ...prev, visible: false }));
+                  setSelectedChatOrderId(activeOrder?.id || null);
+                  setSelectedChatCounterpart(assignedCourier?.fullName || 'Conductor');
+                  setChatVisible(true);
+                }}
+                className="py-2.5"
+              />
+
+              <Button
+                title="🚨 Llamar a la Policía (Línea 123)"
+                variant="danger"
+                onPress={() => {
+                  Linking.openURL('tel:123').catch(() => {});
+                }}
+                className="py-2.5"
+              />
+
+              <Button
+                title="📲 Compartir Alerta SOS por WhatsApp"
+                variant="secondary"
+                onPress={() => {
+                  const trackingUrl =
+                    typeof window !== 'undefined'
+                      ? `${window.location.origin}/track/${activeOrder?.id}`
+                      : `https://domy.app/track/${activeOrder?.id}`;
+                  const text = encodeURIComponent(
+                    `⚠️ ¡ALERTA DE SEGURIDAD! El conductor de mi viaje DOMY se ha desviado ~${deviationAlert.distanceMeters}m de la ruta hacia el destino. Sigue mi trayecto en vivo aquí: ${trackingUrl}`
+                  );
+                  Linking.openURL(`https://wa.me/?text=${text}`).catch(() => {});
+                }}
+                className="py-2.5"
+              />
+
+              {activeOrder?.status === 'ACCEPTED' && (
+                <Button
+                  title="❌ Cancelar Servicio (Conductor desviado)"
+                  variant="outline"
+                  onPress={() => {
+                    setDeviationAlert((prev) => ({ ...prev, visible: false }));
+                    handleCancelOrder();
+                  }}
+                  className="border-rose-400 text-rose-600 py-2.5"
+                />
+              )}
+
+              <Button
+                title="Entendido (Ruta acordada)"
+                variant="outline"
+                onPress={() => setDeviationAlert((prev) => ({ ...prev, visible: false }))}
+                className="mt-1 py-2"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
