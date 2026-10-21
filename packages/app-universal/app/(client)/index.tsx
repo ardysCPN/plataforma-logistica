@@ -19,6 +19,7 @@ import { getSocket } from '../../services/socket';
 import { locationTracker } from '../../services/locationTracker';
 import { soundNotification } from '../../services/soundNotification';
 import { routeDeviationService } from '../../services/routeDeviationService';
+import { geocodingService } from '../../services/geocodingService';
 import {
   ServiceType,
   ServiceOrder,
@@ -48,8 +49,8 @@ export default function ClientHomeScreen() {
   const [originAddress, setOriginAddress] = useState('Mi ubicación actual');
   const [originPoint, setOriginPoint] = useState<GeoPoint>(() => locationTracker.getCachedLocation() || { latitude: 6.2442, longitude: -75.5812 });
   const [intermediateStops, setIntermediateStops] = useState<StopItem[]>([]);
-  const [destAddress, setDestAddress] = useState('Parque Central');
-  const [destPoint, setDestPoint] = useState<GeoPoint>({ latitude: 6.2085, longitude: -75.5678 });
+  const [destAddress, setDestAddress] = useState('');
+  const [destPoint, setDestPoint] = useState<GeoPoint | null>(null);
   const [description, setDescription] = useState('');
   const [estimatedPurchase, setEstimatedPurchase] = useState('25000');
   const [offeredPrice, setOfferedPrice] = useState('10000');
@@ -450,6 +451,13 @@ export default function ClientHomeScreen() {
 
   // 4. Crear Orden
   const handleCreateOrder = async () => {
+    if (!destPoint || !destAddress.trim()) {
+      const msg = 'Por favor ingresa o selecciona la dirección de destino en el mapa.';
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('Destino Requerido', msg);
+      return;
+    }
+
     setLoading(true);
     try {
       // Si hay paradas intermedias, anexarlas en descripción/notas
@@ -647,10 +655,16 @@ export default function ClientHomeScreen() {
           isSearching={activeOrder?.status === 'SEARCHING'}
           darkMode={darkMode}
           onRouteCalculated={(coords) => setActiveRouteCoords(coords)}
-          onMapClick={(point) => {
+          onMapClick={async (point) => {
             if (!activeOrder) {
               setDestPoint(point);
-              setDestAddress(`Punto seleccionado (${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)})`);
+              setDestAddress('Obteniendo dirección...');
+              try {
+                const readable = await geocodingService.reverseGeocode(point);
+                setDestAddress(readable || `Punto (${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)})`);
+              } catch {
+                setDestAddress(`Punto seleccionado (${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)})`);
+              }
             }
           }}
         />
@@ -990,7 +1004,7 @@ export default function ClientHomeScreen() {
                 setDestPoint(point);
                 setDestAddress(text);
               }}
-              placeholder="Escribe calle, barrio o toca en el mapa..."
+              placeholder="¿A dónde vas? Escribe dirección, lugar o toca en el mapa..."
               nearLocation={originPoint}
             />
 

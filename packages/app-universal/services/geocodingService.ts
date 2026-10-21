@@ -28,20 +28,20 @@ export const geocodingService = {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      // Priorizar vista cercana si se proporcionan coordenadas
+      // Priorizar vista cercana a los alrededores del usuario (ej: Quito, Bogotá, etc.)
       let viewboxParam = '';
       if (nearLocation) {
-        const offset = 0.3; // ~30km bounding box
+        const offset = 0.5; // ~50km de radio local
         viewboxParam = `&viewbox=${nearLocation.longitude - offset},${nearLocation.latitude + offset},${nearLocation.longitude + offset},${nearLocation.latitude - offset}&bounded=0`;
       }
 
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
         trimmed
-      )}&countrycodes=co&limit=5&addressdetails=1${viewboxParam}`;
+      )}&limit=6&addressdetails=1${viewboxParam}`;
 
       const response = await fetch(url, {
         headers: {
-          'Accept-Language': 'es-CO,es;q=0.9',
+          'Accept-Language': 'es,es-419;q=0.9',
         },
         signal: controller.signal,
       });
