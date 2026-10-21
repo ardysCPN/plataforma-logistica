@@ -1,3 +1,10 @@
+try {
+  const worker = require('metro-transform-worker');
+  if (worker && !worker.default) {
+    worker.default = worker;
+  }
+} catch (e) {}
+
 const expoTransformer = require('@expo/metro-config/build/transform-worker/transform-worker');
 const nativewindTransformer = require('nativewind/dist/metro/transformer');
 const fs = require('fs');

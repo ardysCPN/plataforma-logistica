@@ -14,7 +14,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://domiapi.adhsolutions.tech"
+        "EXPO_PUBLIC_API_URL": "https://domiapi.adhsolutions.tech",
+        "NODE_OPTIONS": "--max-old-space-size=4096"
       }
     },
     "production": {
@@ -22,7 +23,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://domiapi.adhsolutions.tech"
+        "EXPO_PUBLIC_API_URL": "https://domiapi.adhsolutions.tech",
+        "NODE_OPTIONS": "--max-old-space-size=4096"
       }
     }
   },

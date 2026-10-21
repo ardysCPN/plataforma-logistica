@@ -16,6 +16,8 @@ jobs:
   build-apk:
     name: Compilación APK en Expo EAS Cloud
     runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
 
     steps:
       - name: Checkout del Repositorio
