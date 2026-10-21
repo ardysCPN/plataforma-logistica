@@ -1,0 +1,28 @@
+# Dependencias y cachés
+node_modules/
+.expo/
+build/
+coverage/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# Variables de entorno locales
+.env
+.env.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Exportación web local de app-universal
+dist/
+
+# Excluir backend y servicios no necesarios para la app móvil en EAS Cloud
+../../packages/backend/**
+../../docker/**
+../../MANUAL_DESPLIEGUE.md
+
+# Garantizar inclusión de paquetes compartidos precompilados
+!../../packages/shared/dist/**

@@ -9,7 +9,10 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "export:web": "expo export -p web",
-    "test": "jest"
+    "test": "jest",
+    "eas-build-pre-install": "npm --prefix ../shared run build",
+    "eas-build-post-install": "npm --prefix ../shared run build",
+    "postinstall": "npm --prefix ../shared run build"
   },
   "dependencies": {
     "@plataforma/shared": "*",

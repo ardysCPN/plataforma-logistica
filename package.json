@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "build:shared": "npm run build -w @plataforma/shared",
     "test": "npm run test --workspaces --if-present",
     "dev:backend": "npm run dev -w @plataforma/backend",
     "dev:app": "npm run dev -w @plataforma/app-universal"

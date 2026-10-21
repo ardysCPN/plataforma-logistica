@@ -2,7 +2,18 @@
   "name": "@plataforma/shared",
   "version": "1.0.0",
   "main": "./dist/index.js",
+  "react-native": "./src/index.ts",
+  "source": "./src/index.ts",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "react-native": "./src/index.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
