@@ -40,6 +40,7 @@ if (Platform.OS !== 'web') {
 }
 
 let webWatchId: number | null = null;
+let webPollInterval: ReturnType<typeof setInterval> | null = null;
 
 export const locationTracker = {
   getCachedLocation(): { latitude: number; longitude: number } | null {
@@ -143,7 +144,6 @@ export const locationTracker = {
     }
   },
 
-
   async startTracking(orderIds: string[] = []) {
     activeOrdersList = orderIds;
 
@@ -151,23 +151,40 @@ export const locationTracker = {
       if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
         if (webWatchId !== null) {
           navigator.geolocation.clearWatch(webWatchId);
+          webWatchId = null;
         }
+        if (webPollInterval !== null) {
+          clearInterval(webPollInterval);
+          webPollInterval = null;
+        }
+
+        const emitPosition = (pos: GeolocationPosition) => {
+          const socket = getSocket();
+          if (socket && socket.connected) {
+            socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              bearing: pos.coords.heading || 0,
+              speed: pos.coords.speed || 0,
+              activeOrderIds: activeOrdersList,
+            });
+          }
+        };
+
         webWatchId = navigator.geolocation.watchPosition(
-          (pos) => {
-            const socket = getSocket();
-            if (socket && socket.connected) {
-              socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                bearing: pos.coords.heading || 0,
-                speed: pos.coords.speed || 0,
-                activeOrderIds: activeOrdersList,
-              });
-            }
-          },
+          emitPosition,
           (err) => console.warn('Error rastreando GPS web:', err.message),
-          { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 }
+          { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
         );
+
+        // Sondeo activo periódico cada 3.5 segundos por si el navegador pausa watchPosition durante llamadas o tabs en fondo
+        webPollInterval = setInterval(() => {
+          navigator.geolocation.getCurrentPosition(
+            emitPosition,
+            () => {},
+            { enableHighAccuracy: true, maximumAge: 3000, timeout: 5000 }
+          );
+        }, 3500);
       }
       return;
     }
@@ -192,6 +209,10 @@ export const locationTracker = {
       if (webWatchId !== null && typeof navigator !== 'undefined') {
         navigator.geolocation.clearWatch(webWatchId);
         webWatchId = null;
+      }
+      if (webPollInterval !== null) {
+        clearInterval(webPollInterval);
+        webPollInterval = null;
       }
       return;
     }

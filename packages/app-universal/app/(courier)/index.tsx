@@ -547,7 +547,11 @@ export default function CourierHomeScreen() {
                     )}
                     {(order.status === 'ARRIVED_AT_ORIGIN' || order.status === 'PURCHASING') && (
                       <Button
-                        title="Paquete Recogido"
+                        title={
+                          order.serviceType === 'TRANSPORT'
+                            ? 'Pasajero a Bordo (Iniciar Recorrido) 🚀'
+                            : 'Paquete Recogido (Iniciar Entrega) 📦'
+                        }
                         variant="primary"
                         onPress={() => handleUpdateStatus(order.id, 'PICKED_UP')}
                         className="flex-1 py-2.5"
@@ -555,7 +559,11 @@ export default function CourierHomeScreen() {
                     )}
                     {order.status === 'PICKED_UP' && (
                       <Button
-                        title="En Tránsito"
+                        title={
+                          order.serviceType === 'TRANSPORT'
+                            ? 'En Trayecto hacia el Destino 🏁'
+                            : 'En Tránsito hacia Entrega 🛵'
+                        }
                         variant="primary"
                         onPress={() => handleUpdateStatus(order.id, 'IN_TRANSIT')}
                         className="flex-1 py-2.5"

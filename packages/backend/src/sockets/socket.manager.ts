@@ -153,9 +153,31 @@ export const socketEvents = {
     }
   },
 
-  emitOrderStatusChange(orderId: string, payload: SocketOrderStatusChangePayload) {
+  emitOrderStatusChange(
+    orderId: string,
+    payload: SocketOrderStatusChangePayload,
+    clientId?: string,
+    courierId?: string
+  ) {
     if (ioInstance) {
-      ioInstance.to(`order:${orderId}`).emit(SOCKET_EVENTS.ORDER_STATUS_CHANGE, payload);
+      let broadcaster = ioInstance.to(`order:${orderId}`);
+      if (clientId) broadcaster = broadcaster.to(`user:${clientId}`);
+      if (courierId) broadcaster = broadcaster.to(`user:${courierId}`);
+      broadcaster.emit(SOCKET_EVENTS.ORDER_STATUS_CHANGE, payload);
+    }
+  },
+
+  emitOrderCompleted(
+    orderId: string,
+    payload: unknown,
+    clientId?: string,
+    courierId?: string
+  ) {
+    if (ioInstance) {
+      let broadcaster = ioInstance.to(`order:${orderId}`);
+      if (clientId) broadcaster = broadcaster.to(`user:${clientId}`);
+      if (courierId) broadcaster = broadcaster.to(`user:${courierId}`);
+      broadcaster.emit(SOCKET_EVENTS.ORDER_COMPLETED, payload);
     }
   },
 

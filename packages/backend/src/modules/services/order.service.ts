@@ -97,7 +97,7 @@ export const orderService = {
     };
 
     const orderRes = await db.query(
-      `SELECT id, courier_id as "courierId", status FROM service_orders WHERE id = $1`,
+      `SELECT id, client_id as "clientId", courier_id as "courierId", status FROM service_orders WHERE id = $1`,
       [orderId]
     );
 
@@ -120,11 +120,23 @@ export const orderService = {
       [newStatus, orderId]
     );
 
-    return { orderId, newStatus };
+    const updatedAt = new Date().toISOString();
+    socketEvents.emitOrderStatusChange(
+      orderId,
+      {
+        orderId,
+        newStatus,
+        updatedAt,
+      },
+      order.clientId,
+      courierId
+    );
+
+    return { orderId, newStatus, updatedAt };
   },
 
   async completeOrderWithPin(orderId: string, courierId: string, inputPin: string) {
-    return db.transaction(async (client) => {
+    const result = await db.transaction(async (client) => {
       // Bloquear orden para evitar dobles cierres o condiciones de carrera
       const orderRes = await client.query(
         `SELECT id, client_id as "clientId", courier_id as "courierId", status,
@@ -204,12 +216,29 @@ export const orderService = {
 
       return {
         orderId,
-        status: 'COMPLETED',
+        clientId: order.clientId,
+        courierId,
+        status: 'COMPLETED' as const,
         finalPrice,
         commissionDeducted: commissionAmount,
         walletBalance: newBalance,
       };
     });
+
+    const updatedAt = new Date().toISOString();
+    socketEvents.emitOrderStatusChange(
+      orderId,
+      {
+        orderId,
+        newStatus: 'COMPLETED',
+        updatedAt,
+      },
+      result.clientId,
+      courierId
+    );
+    socketEvents.emitOrderCompleted(orderId, result, result.clientId, courierId);
+
+    return result;
   },
 
   async getOrderById(orderId: string, userId: string) {
@@ -289,6 +318,12 @@ export const orderService = {
 
     if (order.status === 'CANCELLED') {
       throw new Error('La orden ya fue cancelada previamente');
+    }
+
+    if (order.status === 'PICKED_UP' || order.status === 'IN_TRANSIT') {
+      throw new Error(
+        'No es posible cancelar el viaje una vez que el conductor ha recogido el paquete/pasajero o está en ruta. Debe finalizarse con el PIN de seguridad.'
+      );
     }
 
     await db.query(

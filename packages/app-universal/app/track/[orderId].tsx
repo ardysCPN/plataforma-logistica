@@ -28,7 +28,7 @@ interface PublicOrderData {
 export default function PublicTrackScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const [order, setOrder] = useState<PublicOrderData | null>(null);
-  const [courierLocation, setCourierLocation] = useState<GeoPoint | null>(null);
+  const [courierLocation, setCourierLocation] = useState<{ latitude: number; longitude: number; bearing?: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,9 +63,9 @@ export default function PublicTrackScreen() {
     const socket = getSocket();
     socket.emit('order:join', orderId);
 
-    const handleFeed = (feed: { orderId: string; latitude: number; longitude: number }) => {
+    const handleFeed = (feed: { orderId: string; latitude: number; longitude: number; bearing?: number }) => {
       if (feed.orderId === orderId && isMounted) {
-        setCourierLocation({ latitude: feed.latitude, longitude: feed.longitude });
+        setCourierLocation({ latitude: feed.latitude, longitude: feed.longitude, bearing: feed.bearing });
       }
     };
 

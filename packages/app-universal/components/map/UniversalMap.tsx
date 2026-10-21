@@ -58,6 +58,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
+  const lastFittedRouteRef = useRef<string>('');
   const [mapLoaded, setMapLoaded] = useState(false);
   const [streetRoute, setStreetRoute] = useState<StreetRouteResult | null>(null);
 
@@ -232,7 +233,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     const renderMarkers = async () => {
       const maplibregl = (await import('maplibre-gl')).default;
 
-      // Helper para crear o mover marcador
+      // Helper para crear o mover marcador con suavizado continuo de posición
       const updateOrCreateMarker = (
         key: string,
         coords: [number, number] | null,
@@ -247,11 +248,21 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         }
 
         if (markersRef.current[key]) {
-          markersRef.current[key].setLngLat(coords);
+          const marker = markersRef.current[key];
+          const el = marker.getElement();
+          if (el) {
+            // Suavizado de traslación CSS para movimiento fluido en tiempo real
+            el.style.transition = 'transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1)';
+            if (el.innerHTML !== htmlContent) {
+              el.innerHTML = htmlContent;
+            }
+          }
+          marker.setLngLat(coords);
         } else {
           const el = document.createElement('div');
           el.innerHTML = htmlContent;
           el.style.cursor = 'pointer';
+          el.style.transition = 'transform 1.2s cubic-bezier(0.25, 0.1, 0.25, 1)';
 
           const marker = new maplibregl.Marker({ element: el })
             .setLngLat(coords)
@@ -458,47 +469,55 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
           },
         };
 
+        const isStyleReady = map.isStyleLoaded ? map.isStyleLoaded() : mapLoaded;
+
         if (map.getSource('route-line')) {
           (map.getSource('route-line') as any).setData(routeData);
-        } else if (mapLoaded) {
-          map.addSource('route-line', {
-            type: 'geojson',
-            data: routeData,
-          });
+        } else if (isStyleReady) {
+          try {
+            map.addSource('route-line', {
+              type: 'geojson',
+              data: routeData,
+            });
 
-          map.addLayer({
-            id: 'route-line-casing',
-            type: 'line',
-            source: 'route-line',
-            layout: {
-              'line-join': 'round',
-              'line-cap': 'round',
-            },
-            paint: {
-              'line-color': '#1E3A8A',
-              'line-width': 8,
-              'line-opacity': 0.75,
-            },
-          });
+            map.addLayer({
+              id: 'route-line-casing',
+              type: 'line',
+              source: 'route-line',
+              layout: {
+                'line-join': 'round',
+                'line-cap': 'round',
+              },
+              paint: {
+                'line-color': '#1E3A8A',
+                'line-width': 8,
+                'line-opacity': 0.75,
+              },
+            });
 
-          map.addLayer({
-            id: 'route-line-layer',
-            type: 'line',
-            source: 'route-line',
-            layout: {
-              'line-join': 'round',
-              'line-cap': 'round',
-            },
-            paint: {
-              'line-color': '#2563EB',
-              'line-width': 5.5,
-              'line-opacity': 0.95,
-            },
-          });
+            map.addLayer({
+              id: 'route-line-layer',
+              type: 'line',
+              source: 'route-line',
+              layout: {
+                'line-join': 'round',
+                'line-cap': 'round',
+              },
+              paint: {
+                'line-color': '#2563EB',
+                'line-width': 5.5,
+                'line-opacity': 0.95,
+              },
+            });
+          } catch {
+            // Estilo aún cargando
+          }
         }
 
-        // Auto-encuadre de la trayectoria para visibilidad total en mobile
-        if (activeCoordinates.length > 1) {
+        // Auto-encuadre inteligente: solo cuando la ruta cambia o inicia, sin interrumpir el zoom manual del usuario
+        const routeHash = `${origin.latitude.toFixed(4)},${origin.longitude.toFixed(4)}_${destination.latitude.toFixed(4)},${destination.longitude.toFixed(4)}_${activeCoordinates.length}`;
+        if (activeCoordinates.length > 1 && lastFittedRouteRef.current !== routeHash) {
+          lastFittedRouteRef.current = routeHash;
           try {
             const bounds = new maplibregl.LngLatBounds();
             activeCoordinates.forEach((coord: number[]) => {

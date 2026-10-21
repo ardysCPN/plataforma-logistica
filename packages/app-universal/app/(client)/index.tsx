@@ -17,6 +17,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { locationTracker } from '../../services/locationTracker';
+import { soundNotification } from '../../services/soundNotification';
 import {
   ServiceType,
   ServiceOrder,
@@ -76,7 +77,14 @@ export default function ClientHomeScreen() {
   const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => soundNotification.isSoundEnabled());
+  const [isCurtainCollapsed, setIsCurtainCollapsed] = useState(false);
   const lastChatMsgIdRef = useRef<string | null>(null);
+  const activeOrderRef = useRef<ServiceOrder | null>(activeOrder);
+
+  useEffect(() => {
+    activeOrderRef.current = activeOrder;
+  }, [activeOrder]);
 
   // Función explícita para capturar GPS del cliente
   const handleCaptureGps = async () => {
@@ -290,8 +298,10 @@ export default function ClientHomeScreen() {
     };
 
     const handleStatusChange = (data: SocketOrderStatusChangePayload) => {
-      if (activeOrder && activeOrder.id === data.orderId) {
+      const current = activeOrderRef.current;
+      if (current && current.id === data.orderId) {
         setActiveOrder((prev) => (prev ? { ...prev, status: data.newStatus } : null));
+        soundNotification.playChime();
 
         let statusText = 'El estado de tu viaje ha cambiado.';
         if (data.newStatus === 'ARRIVED_AT_ORIGIN') statusText = '📍 ¡El conductor ha llegado al punto de recogida!';
@@ -313,6 +323,7 @@ export default function ClientHomeScreen() {
         if (msg.id && lastChatMsgIdRef.current === msg.id) return;
         lastChatMsgIdRef.current = msg.id || null;
 
+        soundNotification.playMessageTone();
         setUnreadChatsCount((prev) => prev + 1);
         if (!chatVisible) {
           setActiveNotification({
@@ -327,14 +338,17 @@ export default function ClientHomeScreen() {
     };
 
     const handleLocationFeed = (feed: { orderId: string; latitude: number; longitude: number; bearing?: number }) => {
-      if (activeOrder && feed.orderId === activeOrder.id) {
+      const current = activeOrderRef.current;
+      if (!current || feed.orderId === current.id) {
         setCourierLocation({ latitude: feed.latitude, longitude: feed.longitude, bearing: feed.bearing });
       }
     };
 
     const handleCompleted = () => {
-      if (activeOrder) {
-        setCompletedOrderId(activeOrder.id);
+      soundNotification.playChime();
+      const current = activeOrderRef.current;
+      if (current) {
+        setCompletedOrderId(current.id);
       }
       setRatingVisible(true);
       setActiveOrder(null);
@@ -349,7 +363,8 @@ export default function ClientHomeScreen() {
     };
 
     const handleCancelled = (payload: { orderId: string }) => {
-      if (activeOrder && activeOrder.id === payload.orderId) {
+      const current = activeOrderRef.current;
+      if (current && current.id === payload.orderId) {
         if (Platform.OS === 'web') alert('La orden fue cancelada.');
         else Alert.alert('Aviso', 'La orden fue cancelada.');
         setActiveOrder(null);
@@ -376,7 +391,7 @@ export default function ClientHomeScreen() {
       socket.off(SOCKET_EVENTS.ORDER_COMPLETED, handleCompleted);
       socket.off(SOCKET_EVENTS.ORDER_CANCELLED, handleCancelled);
     };
-  }, [activeOrder]);
+  }, [activeOrder?.id]);
 
   // 4. Crear Orden
   const handleCreateOrder = async () => {
@@ -537,6 +552,18 @@ export default function ClientHomeScreen() {
         </View>
 
         <View className="flex-row items-center gap-2">
+          {/* Botón de Sonido (Campana / Silencio) */}
+          <TouchableOpacity
+            onPress={() => {
+              const nextState = soundNotification.toggleSound();
+              setSoundEnabled(nextState);
+            }}
+            className="w-9 h-9 rounded-full bg-white/10 border border-white/20 items-center justify-center active:bg-white/20"
+            accessibilityLabel={soundEnabled ? 'Silenciar sonidos' : 'Activar sonidos'}
+          >
+            <Text className="text-sm">{soundEnabled ? '🔔' : '🔕'}</Text>
+          </TouchableOpacity>
+
           {/* Botón de Captura de GPS */}
           <TouchableOpacity
             onPress={handleCaptureGps}
@@ -552,12 +579,12 @@ export default function ClientHomeScreen() {
         </View>
       </View>
 
-      {/* Mitad Superior: Mapa Universal Interactivo */}
-      <View className="h-[42%] w-full relative">
+      {/* Mitad Superior: Mapa Universal Interactivo con Cortina Desplegable */}
+      <View className={`${isCurtainCollapsed ? 'h-[75%]' : 'h-[42%]'} w-full relative transition-all duration-300`}>
         <UniversalMap
-          center={originPoint}
-          origin={originPoint}
-          destination={destPoint}
+          center={activeOrder?.originPoint || originPoint}
+          origin={activeOrder?.originPoint || originPoint}
+          destination={activeOrder?.destinationPoint || destPoint}
           intermediateStops={intermediateStops.map((s) => s.point)}
           courierLocation={courierLocation}
           userLocation={userLocation}
@@ -582,13 +609,30 @@ export default function ClientHomeScreen() {
       {/* Mitad Inferior: Panel Interactivo */}
       <ScrollView className="flex-1 p-5">
         {activeOrder ? (
-          // Vista de Orden Activa
+          // Vista de Orden Activa con Cortina
           <View className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm mb-6">
+            {/* Manija de Cortina Desplegable para expandir o contraer mapa */}
+            <TouchableOpacity
+              onPress={() => setIsCurtainCollapsed((prev) => !prev)}
+              className="w-full items-center py-1 -mt-2 mb-2 active:opacity-60"
+            >
+              <View className="w-12 h-1.5 bg-slate-300 rounded-full mb-1" />
+              <Text className="text-[11px] font-bold text-slate-500">
+                {isCurtainCollapsed ? '🔼 Subir cortina (Ver detalles y chat)' : '🔽 Bajar cortina (Ver mapa amplio)'}
+              </Text>
+            </TouchableOpacity>
+
             <View className="flex-row items-center justify-between mb-3">
               <View className="flex-row items-center gap-2">
                 <View className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
                 <Text className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  {activeOrder.status === 'SEARCHING' ? 'Buscando conductores...' : 'En curso'}
+                  {activeOrder.status === 'SEARCHING'
+                    ? 'Buscando conductores...'
+                    : activeOrder.status === 'ARRIVED_AT_ORIGIN'
+                    ? '📍 En Origen'
+                    : activeOrder.status === 'PICKED_UP' || activeOrder.status === 'IN_TRANSIT'
+                    ? '🚀 En Ruta al Destino'
+                    : 'En curso'}
                 </Text>
               </View>
               <Text className="text-primary font-black text-lg">
@@ -598,16 +642,18 @@ export default function ClientHomeScreen() {
 
             {/* PIN de Seguridad OTP */}
             {activeOrder.deliveryPin && (
-              <View className="bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl p-4 my-3 items-center">
-                <Text className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-1">
+              <View className={`bg-amber-50 border-2 border-dashed border-amber-300 rounded-2xl ${isCurtainCollapsed ? 'py-2 px-3' : 'p-4'} my-2 items-center`}>
+                <Text className="text-[10px] font-bold text-amber-800 uppercase tracking-widest">
                   Tu PIN Secreto de Entrega
                 </Text>
-                <Text className="text-4xl font-extrabold text-amber-950 tracking-[10px]">
+                <Text className={`${isCurtainCollapsed ? 'text-2xl tracking-[6px]' : 'text-4xl tracking-[10px]'} font-extrabold text-amber-950`}>
                   {activeOrder.deliveryPin}
                 </Text>
-                <Text className="text-[11px] text-amber-700 mt-1.5 text-center">
-                  Díctaselo al conductor únicamente cuando tengas tu paquete o servicio en mano.
-                </Text>
+                {!isCurtainCollapsed && (
+                  <Text className="text-[11px] text-amber-700 mt-1.5 text-center">
+                    Díctaselo al conductor únicamente cuando tengas tu paquete o servicio en mano.
+                  </Text>
+                )}
               </View>
             )}
 
@@ -746,13 +792,16 @@ export default function ClientHomeScreen() {
                     onPress={handleShareLiveTrip}
                     className="border-emerald-300 bg-emerald-50 text-emerald-800"
                   />
-                  <Button
-                    title="❌ Cancelar Servicio"
-                    variant="outline"
-                    onPress={handleCancelOrder}
-                    loading={cancelling}
-                    className="border-rose-300 text-rose-600"
-                  />
+                  {/* El botón de cancelar servicio desaparece una vez que el conductor ya recogió o va en ruta */}
+                  {activeOrder.status !== 'PICKED_UP' && activeOrder.status !== 'IN_TRANSIT' && activeOrder.status !== 'COMPLETED' && (
+                    <Button
+                      title="❌ Cancelar Servicio"
+                      variant="outline"
+                      onPress={handleCancelOrder}
+                      loading={cancelling}
+                      className="border-rose-300 text-rose-600"
+                    />
+                  )}
                 </View>
               </View>
             )}
