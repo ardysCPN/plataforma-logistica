@@ -13,15 +13,20 @@ const path = require('path');
 module.exports = {
   ...nativewindTransformer,
   async transform(config, projectRoot, filename, data, options) {
-    if (options.platform === 'web' && filename.endsWith('.css')) {
-      // Si es el CSS de entrada de Tailwind / NativeWind, cargar el CSS compilado
-      if (config.nativewind && config.nativewind.output) {
-        const compiledCssPath = `${config.nativewind.output}.web.css`;
-        if (fs.existsSync(compiledCssPath)) {
-          data = fs.readFileSync(compiledCssPath);
+    if (filename.endsWith('.css')) {
+      if (options.platform === 'web') {
+        // En Web, cargar el CSS compilado de Tailwind para inyección en el bundle web
+        if (config.nativewind && config.nativewind.output) {
+          const compiledCssPath = `${config.nativewind.output}.web.css`;
+          if (fs.existsSync(compiledCssPath)) {
+            data = fs.readFileSync(compiledCssPath);
+          }
         }
+        return expoTransformer.transform(config, projectRoot, filename, data, options);
       }
-      return expoTransformer.transform(config, projectRoot, filename, data, options);
+      // En plataformas nativas (Android/iOS), React Native no ejecuta CSS en el runtime.
+      // Delegar a expoTransformer con módulo vacío para evitar errores de source maps en Release
+      return expoTransformer.transform(config, projectRoot, filename, Buffer.from(''), options);
     }
     return nativewindTransformer.transform(config, projectRoot, filename, data, options);
   },
