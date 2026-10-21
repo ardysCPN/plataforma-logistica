@@ -28,32 +28,50 @@ export const geocodingService = {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      // Priorizar vista cercana a los alrededores del usuario (ej: Quito, Bogotá, etc.)
+      // Priorizar y restringir estrictamente al municipio local en Colombia (ej: Quibdó, Medellín, Cali, etc.)
       let viewboxParam = '';
       if (nearLocation) {
-        const offset = 0.5; // ~50km de radio local
-        viewboxParam = `&viewbox=${nearLocation.longitude - offset},${nearLocation.latitude + offset},${nearLocation.longitude + offset},${nearLocation.latitude - offset}&bounded=0`;
+        const offset = 0.20; // Radio de ~20km para limitar al municipio/ciudad
+        viewboxParam = `&viewbox=${nearLocation.longitude - offset},${nearLocation.latitude + offset},${nearLocation.longitude + offset},${nearLocation.latitude - offset}&bounded=1`;
       }
 
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
         trimmed
-      )}&limit=6&addressdetails=1${viewboxParam}`;
+      )}&countrycodes=co&limit=8&addressdetails=1${viewboxParam}`;
 
       const response = await fetch(url, {
         headers: {
-          'Accept-Language': 'es,es-419;q=0.9',
+          'Accept-Language': 'es-CO,es;q=0.9',
         },
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        const data = (await response.json()) as any[];
+        let data = (await response.json()) as any[];
+
+        // Si con límite estricto municipal (20km) no hubo coincidencias, ampliar a perímetro subregional (35km) con bounded=1
+        if (data.length === 0 && nearLocation) {
+          const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+            trimmed
+          )}&countrycodes=co&limit=8&addressdetails=1&viewbox=${nearLocation.longitude - 0.35},${nearLocation.latitude + 0.35},${nearLocation.longitude + 0.35},${nearLocation.latitude - 0.35}&bounded=1`;
+          try {
+            const fallbackRes = await fetch(fallbackUrl, {
+              headers: { 'Accept-Language': 'es-CO,es;q=0.9' },
+            });
+            if (fallbackRes.ok) {
+              data = (await fallbackRes.json()) as any[];
+            }
+          } catch {
+            // Mantener datos vacíos si falla
+          }
+        }
+
         const suggestions: GeocodingSuggestion[] = data.map((item) => {
           const addr = item.address || {};
           const road = addr.road || addr.pedestrian || addr.suburb || item.name || '';
           const houseNumber = addr.house_number ? ` #${addr.house_number}` : '';
-          const neighborhood = addr.neighbourhood || addr.suburb || '';
+          const neighborhood = addr.neighbourhood || addr.suburb || addr.quarter || addr.city_district || '';
           const city = addr.city || addr.town || addr.municipality || addr.state || '';
 
           const short = road ? `${road}${houseNumber}${neighborhood ? ', ' + neighborhood : ''}` : item.display_name.split(',')[0];
@@ -67,6 +85,15 @@ export const geocodingService = {
             neighbourhood: neighborhood,
           };
         });
+
+        // Priorizar ordenando por cercanía física (menor distancia a la geolocalización del usuario)
+        if (nearLocation && suggestions.length > 1) {
+          suggestions.sort((a, b) => {
+            const distA = Math.hypot(a.latitude - nearLocation.latitude, a.longitude - nearLocation.longitude);
+            const distB = Math.hypot(b.latitude - nearLocation.latitude, b.longitude - nearLocation.longitude);
+            return distA - distB;
+          });
+        }
 
         geocodeCache.set(cacheKey, suggestions);
         return suggestions;

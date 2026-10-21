@@ -1,0 +1,4 @@
+# Carpeta de Distribución de APKs
+Coloca aquí el archivo compilado `domy.apk`.
+Una vez colocado en este directorio (o en el volumen montado de Nginx en el servidor en `/usr/share/nginx/html/downloads/domy.apk`), cualquier usuario podrá descargarlo directamente desde:
+https://domiapp.adhsolutions.tech/downloads/domy.apk

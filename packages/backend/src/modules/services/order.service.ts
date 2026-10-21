@@ -90,8 +90,8 @@ export const orderService = {
       ACCEPTED: ['ARRIVED_AT_ORIGIN', 'CANCELLED'],
       ARRIVED_AT_ORIGIN: ['PURCHASING', 'PICKED_UP', 'CANCELLED'],
       PURCHASING: ['PICKED_UP', 'CANCELLED'],
-      PICKED_UP: ['IN_TRANSIT', 'CANCELLED'],
-      IN_TRANSIT: ['COMPLETED', 'CANCELLED'],
+      PICKED_UP: ['IN_TRANSIT'],
+      IN_TRANSIT: ['COMPLETED'],
       COMPLETED: [],
       CANCELLED: [],
     };

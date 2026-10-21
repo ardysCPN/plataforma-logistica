@@ -15,7 +15,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.domy.app"
+      "bundleIdentifier": "com.domy.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "DOMY necesita tu ubicación para calcular rutas y mostrar servicios cercanos.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "DOMY necesita tu ubicación en segundo plano para rastrear tus entregas en tiempo real.",
+        "UIBackgroundModes": ["location"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,11 +29,16 @@
       },
       "package": "com.domy.app",
       "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION"
+        "FOREGROUND_SERVICE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "CALL_PHONE",
+        "VIBRATE"
       ]
     },
     "web": {

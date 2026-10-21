@@ -10,6 +10,7 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
   const [isInstalled, setIsInstalled] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -24,10 +25,12 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
       return;
     }
 
-    // Detectar iOS Safari
+    // Detectar iOS Safari y Android
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
+    const isAndroidDevice = /android/.test(userAgent);
     setIsIOS(isIosDevice);
+    setIsAndroid(isAndroidDevice);
 
     if ((window as any).__domyInstallPrompt) {
       setCanInstall(true);
@@ -137,6 +140,19 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
             {canInstall ? '⚡ Instalar Aplicación Ahora' : '📲 Ver Cómo Instalar en este Equipo'}
           </Text>
         </TouchableOpacity>
+
+        {isAndroid && (
+          <TouchableOpacity
+            onPress={() => {
+              if (typeof window !== 'undefined') {
+                window.location.href = '/downloads/domy.apk';
+              }
+            }}
+            className="mt-2.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 py-2.5 px-4 rounded-2xl flex-row items-center justify-center gap-2"
+          >
+            <Text className="text-emerald-400 font-extrabold text-xs">🤖 O descarga directamente el APK de Android</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {renderGuideModal()}
@@ -208,6 +224,27 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
                   <Text className="text-xl">3️⃣</Text>
                   <Text className="text-xs text-slate-700 flex-1">
                     Confirma <Text className="font-black text-emerald-600">"Instalar"</Text>. DOMY se añadirá como app nativa a tu escritorio o celular.
+                  </Text>
+                </View>
+
+                {/* Opción de descarga directa de APK nativo */}
+                <View className="pt-3 border-t border-slate-200 mt-2">
+                  <Text className="text-[11px] font-black uppercase text-slate-500 mb-2">
+                    ¿Deseas el archivo instalador nativo (.apk)?
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowGuideModal(false);
+                      if (typeof window !== 'undefined') {
+                        window.location.href = '/downloads/domy.apk';
+                      }
+                    }}
+                    className="bg-emerald-600 active:bg-emerald-700 py-3 rounded-xl flex-row items-center justify-center gap-2 shadow"
+                  >
+                    <Text className="text-white font-extrabold text-xs">🤖 Descargar Archivo APK (.apk)</Text>
+                  </TouchableOpacity>
+                  <Text className="text-[10px] text-slate-400 text-center mt-1">
+                    Requiere permitir "Instalar aplicaciones desconocidas" en Android.
                   </Text>
                 </View>
               </View>
