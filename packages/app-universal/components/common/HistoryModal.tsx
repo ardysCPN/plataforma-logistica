@@ -152,8 +152,8 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       A: <Text className="font-semibold text-slate-900">{item.destinationAddress}</Text>
                     </Text>
 
-                    {/* Código PIN de Entrega para cerrar el viaje */}
-                    {item.deliveryPin && (
+                    {/* Código PIN de Entrega para cerrar el viaje (Solo visible para el Cliente) */}
+                    {!isCourier && item.deliveryPin && (
                       <View className="bg-white border border-emerald-300 rounded-xl p-2.5 mb-2.5 flex-row items-center justify-between shadow-xs">
                         <View className="flex-row items-center gap-2 flex-1 mr-2">
                           <Text className="text-lg">🔐</Text>
