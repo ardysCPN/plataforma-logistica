@@ -267,7 +267,7 @@ export default function ClientHomeScreen() {
         id: `bid_${Date.now()}`,
         type: 'BID',
         title: '💰 ¡Nueva Oferta de Conductor!',
-        message: `${bid.courierName} ofrece $${bid.bidAmount?.toLocaleString()} COP (⭐ ${bid.courierRating?.toFixed(1) || '5.0'})`,
+        message: `${bid.courierName} ofrece $${Number(bid.bidAmount || 0).toLocaleString()} COP (⭐ ${(Number(bid.courierRating) || 5.0).toFixed(1)})`,
       });
     };
 
@@ -632,7 +632,7 @@ export default function ClientHomeScreen() {
                       <View>
                         <Text className="text-sm font-bold text-slate-900">{bid.courierName}</Text>
                         <Text className="text-xs text-slate-500">
-                          ⭐ {bid.courierRating?.toFixed(1) || '5.0'} • {bid.vehicleType} {bid.vehiclePlate || ''}
+                          ⭐ {(Number(bid.courierRating) || 5.0).toFixed(1)} • {bid.vehicleType} {bid.vehiclePlate || ''}
                         </Text>
                         {bid.etaMinutes && (
                           <Text className="text-xs text-emerald-600 font-semibold mt-0.5">
@@ -683,7 +683,7 @@ export default function ClientHomeScreen() {
                           {assignedCourier?.vehicleType || 'MOTO'} • Placa: <Text className="font-bold text-slate-800">{assignedCourier?.vehiclePlate || 'N/A'}</Text>
                         </Text>
                         <Text className="text-xs text-amber-500 font-bold mt-0.5">
-                          ⭐ {assignedCourier?.ratingAvg?.toFixed(1) || '5.0'} Conductor Verificado
+                          ⭐ {(Number(assignedCourier?.ratingAvg) || 5.0).toFixed(1)} Conductor Verificado
                         </Text>
                       </View>
                     </View>

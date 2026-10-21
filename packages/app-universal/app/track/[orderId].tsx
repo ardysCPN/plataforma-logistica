@@ -171,7 +171,7 @@ export default function PublicTrackScreen() {
                   {order.courier.firstName} (Conductor)
                 </Text>
                 <Text className="text-xs text-slate-500 font-medium">
-                  ⭐ {order.courier.ratingAvg.toFixed(1)} • {order.courier.vehicleType}{' '}
+                  ⭐ {(Number(order.courier.ratingAvg) || 5.0).toFixed(1)} • {order.courier.vehicleType}{' '}
                   {order.courier.vehiclePlate ? `• Placa: ${order.courier.vehiclePlate}` : ''}
                 </Text>
               </View>

@@ -431,7 +431,16 @@ export const orderService = {
            WHERE ob.order_id = $1 AND ob.status = 'PENDING'`,
           [r.id]
         );
-        bids = bidsRes.rows;
+        bids = bidsRes.rows.map((b: any) => ({
+          bidId: b.bidId,
+          courierId: b.courierId,
+          bidAmount: Number(b.bidAmount),
+          etaMinutes: Number(b.etaMinutes || 10),
+          courierName: b.courierName,
+          courierRating: Number(b.courierRating || 5.0),
+          vehicleType: b.vehicleType,
+          vehiclePlate: b.vehiclePlate,
+        }));
       }
 
       return {

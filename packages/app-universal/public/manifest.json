@@ -1,21 +1,32 @@
 {
-  "short_name": "Plataforma",
-  "name": "Plataforma Universal de Logística y Movilidad",
+  "name": "DOMY - Envíos y Movilidad",
+  "short_name": "DOMY",
+  "description": "Plataforma de logística, domicilios y transporte en tiempo real",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F172A",
+  "theme_color": "#FF6B00",
+  "categories": ["business", "logistics", "travel"],
   "icons": [
     {
-      "src": "/favicon.png",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
       "type": "image/png",
-      "sizes": "192x192"
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/favicon.png",
-      "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "48x48",
+      "type": "image/png"
     }
-  ],
-  "start_url": "/",
-  "background_color": "#0F172A",
-  "theme_color": "#FF6B00",
-  "display": "standalone",
-  "orientation": "portrait"
+  ]
 }

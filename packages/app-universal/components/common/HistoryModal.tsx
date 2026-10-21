@@ -180,7 +180,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                         <Text className="text-sm">⭐</Text>
                         <View className="flex-1">
                           <Text className="text-xs font-bold text-amber-900">
-                            Calificación: {item.ratingReceived.toFixed(1)} / 5.0
+                            Calificación: {(Number(item.ratingReceived) || 5.0).toFixed(1)} / 5.0
                           </Text>
                           {item.commentReceived ? (
                             <Text className="text-[11px] text-amber-800 italic mt-0.5">

@@ -11,14 +11,45 @@ export default function Root({ children }: PropsWithChildren) {
         <title>DOMY - Envíos y Movilidad</title>
 
         {/* PWA & iOS Safari Home Screen Meta Tags */}
+        <meta name="theme-color" content="#FF6B00" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="DOMY" />
-        <link rel="apple-touch-icon" href="/assets/icon.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon.png" />
-        <link rel="icon" type="image/png" href="/assets/favicon.png" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
 
         <ScrollViewStyleReset />
+
+        {/* Script de Registro de Service Worker PWA y captura de instalación */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                    console.log('DOMY ServiceWorker activo');
+                  }).catch(function(err) {
+                    console.warn('DOMY ServiceWorker no registrado:', err);
+                  });
+                });
+              }
+
+              window.__domyInstallPrompt = null;
+              window.addEventListener('beforeinstallprompt', function(e) {
+                e.preventDefault();
+                window.__domyInstallPrompt = e;
+                window.dispatchEvent(new CustomEvent('domy:can-install'));
+              });
+              window.addEventListener('appinstalled', function() {
+                window.__domyInstallPrompt = null;
+                window.dispatchEvent(new CustomEvent('domy:installed'));
+              });
+            `,
+          }}
+        />
       </head>
       <body>{children}</body>
     </html>

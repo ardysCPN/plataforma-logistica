@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { PwaInstallCard } from './PwaInstallCard';
 
 interface AppDrawerProps {
   visible: boolean;
@@ -182,7 +183,9 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
           </ScrollView>
 
           {/* Botón Salir en Footer */}
-          <View className="p-5 border-t border-slate-100 dark:border-slate-800">
+          <View className="p-5 border-t border-slate-100 dark:border-slate-800 space-y-3">
+            <PwaInstallCard variant="drawer" />
+
             <TouchableOpacity
               onPress={() => {
                 onClose();

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
+import { PwaInstallCard } from '../../components/common/PwaInstallCard';
 import { useAuthStore } from '../../stores/authStore';
 
 export default function LoginScreen() {
@@ -29,13 +30,18 @@ export default function LoginScreen() {
   return (
     <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="bg-slate-50 px-6 py-12 justify-center">
       <View className="w-full max-w-md self-center bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-        <View className="mb-8">
-          <Text className="text-3xl font-extrabold text-slate-900 tracking-tight mb-2">
-            Iniciar Sesión
-          </Text>
-          <Text className="text-sm text-slate-500">
-            Ingresa a tu cuenta para continuar
-          </Text>
+        <View className="mb-6 flex-row items-center justify-between">
+          <View>
+            <Text className="text-3xl font-extrabold text-slate-900 tracking-tight mb-1">
+              DOMY
+            </Text>
+            <Text className="text-sm text-slate-500">
+              Ingresa a tu cuenta para continuar
+            </Text>
+          </View>
+          <View className="w-12 h-12 rounded-2xl bg-primary/10 items-center justify-center border border-primary/20">
+            <Text className="text-2xl">⚡</Text>
+          </View>
         </View>
 
         {error && (
@@ -70,14 +76,19 @@ export default function LoginScreen() {
           title="Ingresar"
           onPress={handleLogin}
           loading={isLoading}
-          className="mt-2 mb-6"
+          className="mt-2 mb-5"
         />
 
-        <View className="flex-row justify-center items-center gap-1.5">
+        <View className="flex-row justify-center items-center gap-1.5 pb-2">
           <Text className="text-sm text-slate-500">¿No tienes cuenta?</Text>
           <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
             <Text className="text-sm font-bold text-primary">Regístrate</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Tarjeta de Instalación de la Aplicación (PWA Nativa) */}
+        <View className="mt-4 pt-4 border-t border-slate-100">
+          <PwaInstallCard variant="card" />
         </View>
       </View>
     </ScrollView>
