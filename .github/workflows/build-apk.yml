@@ -16,6 +16,8 @@ jobs:
   build-apk:
     name: Compilación APK en Expo EAS Cloud
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -50,3 +52,31 @@ jobs:
         working-directory: packages/app-universal
         run: |
           npx eas-cli build --platform android --profile ${{ github.event.inputs.profile || 'preview' }} --non-interactive
+
+      - name: Obtener y Descargar APK Compilado
+        working-directory: packages/app-universal
+        run: |
+          APK_URL=$(npx eas-cli build:list --limit=1 --platform=android --json --non-interactive | jq -r '.[0].artifacts.buildUrl')
+          echo "URL del artefacto APK: $APK_URL"
+          if [ "$APK_URL" != "null" ] && [ -n "$APK_URL" ]; then
+            curl -L -o domy.apk "$APK_URL"
+          else
+            echo "Aviso: No se pudo descargar el archivo APK automáticamente."
+          fi
+
+      - name: Adjuntar APK a los Artefactos de la Ejecución en GitHub
+        uses: actions/upload-artifact@v4
+        if: hashFiles('packages/app-universal/domy.apk') != ''
+        with:
+          name: domy-apk
+          path: packages/app-universal/domy.apk
+
+      - name: Publicar APK en GitHub Releases (Enlace Permanente de Descarga)
+        if: hashFiles('packages/app-universal/domy.apk') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v1.0.0-apk packages/app-universal/domy.apk \
+            --title "DOMY Android APK (v1.0.0)" \
+            --notes "Compilación oficial de DOMY APK para Android generada mediante EAS Build." \
+            --clobber

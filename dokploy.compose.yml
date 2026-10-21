@@ -72,6 +72,8 @@ services:
       dockerfile: packages/app-universal/Dockerfile
     container_name: domi_web
     restart: always
+    volumes:
+      - apk_downloads:/usr/share/nginx/html/downloads
     depends_on:
       - backend
     labels:
@@ -86,3 +88,4 @@ volumes:
   postgres_data:
   redis_data:
   uploads_data:
+  apk_downloads:
