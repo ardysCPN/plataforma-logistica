@@ -21,7 +21,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.tudominio.com"
+        "EXPO_PUBLIC_API_URL": "https://domiapi.adhsolutions.tech"
       }
     }
   },
