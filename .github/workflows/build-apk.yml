@@ -83,7 +83,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create v1.0.0-apk packages/app-universal/domy.apk \
-            --title "DOMY Android APK (v1.0.0)" \
-            --notes "Compilación oficial de DOMY APK para Android generada mediante EAS Build." \
-            --clobber
+          if gh release view v1.0.0-apk > /dev/null 2>&1; then
+            gh release upload v1.0.0-apk packages/app-universal/domy.apk --clobber
+          else
+            gh release create v1.0.0-apk packages/app-universal/domy.apk \
+              --title "DOMY Android APK (v1.0.0)" \
+              --notes "Compilación oficial de DOMY APK para Android generada mediante EAS Build."
+          fi
