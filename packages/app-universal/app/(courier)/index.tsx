@@ -54,6 +54,7 @@ export default function CourierHomeScreen() {
   const [selectedOrderIdForChat, setSelectedOrderIdForChat] = useState<string | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [pqrModalVisible, setPqrModalVisible] = useState(false);
+  const [selectedPqrOrderId, setSelectedPqrOrderId] = useState<string>('');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [activeNotification, setActiveNotification] = useState<BannerNotification | null>(null);
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
@@ -859,15 +860,20 @@ export default function CourierHomeScreen() {
         )}
       </ScrollView>
 
-      {/* Modal: Modo Destino para Conductor (Feature 4) */}
       <Modal
         visible={destModalVisible}
         animationType="slide"
         transparent={true}
+        statusBarTranslucent={true}
         onRequestClose={() => setDestModalVisible(false)}
       >
         <View className="flex-1 justify-end bg-black/60">
-          <View className={`rounded-t-3xl p-6 shadow-2xl max-h-[85%] ${darkMode ? 'bg-slate-900 border-t border-slate-800' : 'bg-white'}`}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setDestModalVisible(false)}
+            className="flex-1"
+          />
+          <View className={`rounded-t-3xl p-6 shadow-2xl max-h-[85%] z-10 ${darkMode ? 'bg-slate-900 border-t border-slate-800' : 'bg-white'}`}>
             <View className="flex-row items-center justify-between mb-3">
               <View className="flex-row items-center gap-2">
                 <Text className="text-2xl">🎯</Text>
@@ -1048,6 +1054,11 @@ export default function CourierHomeScreen() {
         visible={historyVisible}
         onClose={() => setHistoryVisible(false)}
         isCourier={true}
+        onOpenPqr={(orderId) => {
+          setSelectedPqrOrderId(orderId);
+          setHistoryVisible(false);
+          setPqrModalVisible(true);
+        }}
         onSelectActiveOrder={async (orderId) => {
           try {
             const res = await api.get<ServiceOrder>(`/api/orders/${orderId}`);
@@ -1065,9 +1076,13 @@ export default function CourierHomeScreen() {
 
       <PqrModal
         visible={pqrModalVisible}
-        orderId={activeOrders[0]?.id || ''}
+        orderId={selectedPqrOrderId || activeOrders[0]?.id || ''}
         isCourier={true}
-        onClose={() => setPqrModalVisible(false)}
+        onClose={() => {
+          setPqrModalVisible(false);
+          setSelectedPqrOrderId('');
+        }}
+        onOpenHistory={() => setHistoryVisible(true)}
       />
     </View>
   );

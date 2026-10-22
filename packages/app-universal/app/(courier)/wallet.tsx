@@ -68,7 +68,7 @@ export default function CourierWalletScreen() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-slate-50">
+    <ScrollView className="flex-1 bg-slate-50" keyboardShouldPersistTaps="handled">
       {/* Cabecera */}
       <View className="bg-secondary px-5 py-4 pt-12 flex-row items-center justify-between shadow-md">
         <TouchableOpacity onPress={() => router.back()} className="p-2">

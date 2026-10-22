@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { Button } from '../common/Button';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
+import { soundNotification } from '../../services/soundNotification';
 import { ChatMessage, SOCKET_EVENTS } from '@plataforma/shared';
 
 interface ChatModalProps {
@@ -30,13 +31,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (!visible || !orderId) return;
 
     // Cargar historial previo
     api.get<ChatMessage[]>(`/api/chat/history/${orderId}`)
-      .then((res) => setMessages(res.data))
+      .then((res) => {
+        setMessages(res.data);
+        setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: false }), 200);
+      })
       .catch((err) => console.warn('Error cargando historial de chat:', err));
 
     const socket = getSocket();
@@ -44,10 +49,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
     const handleMessage = (msg: ChatMessage) => {
       if (msg.orderId === orderId) {
+        soundNotification.playPop();
         setMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
+        setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
       }
     };
 
@@ -72,6 +79,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         content,
       });
       setText('');
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err) {
       console.warn('Error enviando mensaje:', err);
     } finally {
@@ -80,8 +88,17 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false}>
-      <View className="flex-1 bg-slate-50">
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={false}
+      statusBarTranslucent={true}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1 bg-slate-50"
+      >
         {/* Cabecera del Chat */}
         <View className="bg-secondary px-5 py-4 pt-12 flex-row items-center justify-between shadow-md">
           <View>
@@ -90,14 +107,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           </View>
           <TouchableOpacity
             onPress={onClose}
-            className="bg-white/10 px-3.5 py-1.5 rounded-full"
+            className="bg-white/10 px-3.5 py-1.5 rounded-full active:bg-white/20"
           >
             <Text className="text-white text-xs font-semibold">Cerrar ✕</Text>
           </TouchableOpacity>
         </View>
 
         {/* Lista de Mensajes */}
-        <ScrollView className="flex-1 p-4">
+        <ScrollView
+          ref={scrollViewRef}
+          className="flex-1 p-4"
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        >
           {messages.length === 0 ? (
             <View className="items-center justify-center py-16">
               <Text className="text-slate-400 text-sm">No hay mensajes aún.</Text>
@@ -142,7 +164,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <TouchableOpacity
                 key={note}
                 onPress={() => handleSend(note)}
-                className="bg-white border border-slate-300 rounded-full px-3 py-1.5 mr-2 shadow-sm"
+                className="bg-white border border-slate-300 rounded-full px-3 py-1.5 mr-2 shadow-sm active:bg-slate-50"
               >
                 <Text className="text-xs text-slate-700 font-medium">{note}</Text>
               </TouchableOpacity>
@@ -166,7 +188,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             className="px-4 py-3"
           />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

@@ -28,7 +28,11 @@ export default function LoginScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="bg-slate-50 px-6 py-12 justify-center">
+    <ScrollView
+      contentContainerStyle={{ flexGrow: 1 }}
+      keyboardShouldPersistTaps="handled"
+      className="bg-slate-50 px-6 py-12 justify-center"
+    >
       <View className="w-full max-w-md self-center bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
         <View className="mb-6 flex-row items-center justify-between">
           <View>
@@ -94,7 +98,7 @@ export default function LoginScreen() {
         {/* Indicador visual de Versión para depuración y verificación */}
         <View className="mt-3 items-center">
           <Text className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-            DOMY Mobile v1.0.2 (OpenStreetMap & Menú Reparados)
+            DOMY Mobile v1.0.3 (Versión Oficial Nativa & Web)
           </Text>
         </View>
       </View>

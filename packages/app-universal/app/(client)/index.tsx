@@ -73,6 +73,7 @@ export default function ClientHomeScreen() {
   const [ratingVisible, setRatingVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [pqrModalVisible, setPqrModalVisible] = useState(false);
+  const [selectedPqrOrderId, setSelectedPqrOrderId] = useState<string>('');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [activeNotification, setActiveNotification] = useState<BannerNotification | null>(null);
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
@@ -563,8 +564,7 @@ export default function ClientHomeScreen() {
 
   // 8. Compartir viaje con familiares vía WhatsApp (Live Trip Sharing)
   const handleShareLiveTrip = () => {
-    if (!activeOrder) return;
-    const origin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080';
+    const origin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://domiapp.adhsolutions.tech';
     const trackUrl = `${origin}/track/${activeOrder.id}`;
     const text = encodeURIComponent(`Hola, sigo en camino con mi servicio. Puedes ver mi ubicación y recorrido en vivo en el mapa aquí: ${trackUrl}`);
     const whatsappUrl = `https://api.whatsapp.com/send?text=${text}`;
@@ -1149,13 +1149,22 @@ export default function ClientHomeScreen() {
         onClose={() => setHistoryVisible(false)}
         isCourier={false}
         onSelectActiveOrder={handleSelectActiveOrderFromHistory}
+        onOpenPqr={(orderId) => {
+          setSelectedPqrOrderId(orderId);
+          setHistoryVisible(false);
+          setPqrModalVisible(true);
+        }}
       />
 
       <PqrModal
         visible={pqrModalVisible}
-        orderId={activeOrder?.id || ''}
+        orderId={selectedPqrOrderId || activeOrder?.id || ''}
         isCourier={false}
-        onClose={() => setPqrModalVisible(false)}
+        onClose={() => {
+          setPqrModalVisible(false);
+          setSelectedPqrOrderId('');
+        }}
+        onOpenHistory={() => setHistoryVisible(true)}
       />
 
       {/* Modal de Alerta de Desvío de Ruta (Seguridad y Notificación al Cliente) */}
@@ -1163,6 +1172,7 @@ export default function ClientHomeScreen() {
         visible={deviationAlert.visible}
         animationType="fade"
         transparent={true}
+        statusBarTranslucent={true}
         onRequestClose={() => setDeviationAlert((prev) => ({ ...prev, visible: false }))}
       >
         <View className="flex-1 justify-center items-center bg-black/75 px-4">

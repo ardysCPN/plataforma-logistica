@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Modal, ScrollView } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity } from 'react-native';
 import { Button } from './Button';
 
 interface LegalModalProps {
@@ -14,9 +14,22 @@ export const LegalModal: React.FC<LegalModalProps> = ({
   onDecline,
 }) => {
   return (
-    <Modal visible={visible} animationType="slide" transparent={true}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      statusBarTranslucent={true}
+      onRequestClose={onDecline}
+    >
       <View className="flex-1 justify-center items-center bg-black/60 px-4">
-        <View className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl max-h-[85%]">
+        {/* Backdrop touchable */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={onDecline}
+          className="absolute inset-0"
+        />
+
+        <View className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-xl max-h-[85%] z-10">
           <Text className="text-xl font-bold text-slate-900 mb-2">
             Descargo de Responsabilidad y Términos Legales
           </Text>
@@ -24,7 +37,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
             VERSIÓN 1.0 — ACEPTACIÓN EXPRESA OBLIGATORIA
           </Text>
 
-          <ScrollView className="mb-6 pr-2">
+          <ScrollView className="mb-6 pr-2" keyboardShouldPersistTaps="handled">
             <View className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-4">
               <Text className="text-amber-900 text-xs font-semibold leading-relaxed">
                 Cláusula Esencial: La plataforma actúa exclusivamente como portal de contacto y tecnología. El contrato de transporte o mandato se celebra de forma directa e independiente entre el usuario solicitante y el conductor independiente.

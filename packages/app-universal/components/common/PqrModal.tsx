@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, TextInput, Alert, Platform } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, TextInput, Alert, Platform, Linking, ScrollView } from 'react-native';
 import { Button } from './Button';
 import { api } from '../../services/api';
 
 interface PqrModalProps {
   visible: boolean;
-  orderId: string;
+  orderId?: string | null;
   isCourier?: boolean;
   onClose: () => void;
+  onOpenHistory?: () => void;
   onSuccess?: () => void;
 }
 
@@ -20,12 +21,26 @@ const CATEGORIES = [
   { id: 'OTHER', label: '📝 Otro Motivo' },
 ];
 
-export const PqrModal: React.FC<PqrModalProps> = ({ visible, orderId, onClose, onSuccess }) => {
+const SUPPORT_WHATSAPP = 'https://wa.me/573000000000?text=' + encodeURIComponent('Hola equipo de soporte DOMY, necesito asistencia con la plataforma.');
+const EMERGENCY_PHONE = 'tel:123';
+
+export const PqrModal: React.FC<PqrModalProps> = ({
+  visible,
+  orderId,
+  isCourier = false,
+  onClose,
+  onOpenHistory,
+  onSuccess,
+}) => {
   const [category, setCategory] = useState(CATEGORIES[0].id);
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const hasSpecificOrder = Boolean(orderId && orderId.trim().length > 0);
+
   const handleSubmit = async () => {
+    if (!hasSpecificOrder) return;
+
     if (description.trim().length < 5) {
       const msg = 'Por favor describe el motivo del reporte con al menos 5 caracteres.';
       if (Platform.OS === 'web') alert(msg);
@@ -40,7 +55,7 @@ export const PqrModal: React.FC<PqrModalProps> = ({ visible, orderId, onClose, o
         description: description.trim(),
       });
 
-      const successMsg = res.data.message || 'Reporte radicado con éxito. Nuestro equipo lo revisará.';
+      const successMsg = res.data.message || 'Reporte radicado con éxito. Nuestro equipo lo revisará en breve.';
       if (Platform.OS === 'web') alert(`✅ ${successMsg}`);
       else Alert.alert('Reporte Radicado', successMsg);
 
@@ -56,18 +71,43 @@ export const PqrModal: React.FC<PqrModalProps> = ({ visible, orderId, onClose, o
     }
   };
 
+  const handleOpenWhatsApp = () => {
+    Linking.openURL(SUPPORT_WHATSAPP).catch(() => {
+      Alert.alert('Soporte', 'Escríbenos a contacto@adhsolutions.tech');
+    });
+  };
+
+  const handleCallEmergency = () => {
+    Linking.openURL(EMERGENCY_PHONE).catch(() => {
+      Alert.alert('Emergencias', 'Marca 123 desde tu teléfono');
+    });
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      statusBarTranslucent={true}
+      onRequestClose={onClose}
+    >
       <View className="flex-1 bg-black/60 justify-center items-center px-4">
-        <View className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
+        {/* Backdrop dismiss touchable */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={onClose}
+          className="absolute inset-0"
+        />
+
+        <View className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl z-10 max-h-[90%]">
           {/* Encabezado */}
           <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">
             <View>
               <Text className="text-lg font-black text-slate-900">
-                🛡️ Soporte y Reportes PQR
+                🛡️ Centro de Ayuda y PQR
               </Text>
               <Text className="text-xs text-slate-500">
-                Objetos olvidados, seguridad o disputas de servicio
+                {hasSpecificOrder ? `Reporte para el servicio #${orderId?.slice(0, 8)}` : 'Atención al usuario y soporte 24/7'}
               </Text>
             </View>
             <TouchableOpacity
@@ -78,56 +118,134 @@ export const PqrModal: React.FC<PqrModalProps> = ({ visible, orderId, onClose, o
             </TouchableOpacity>
           </View>
 
-          {/* Categorías */}
-          <Text className="text-xs font-bold text-slate-700 mb-2">Motivo del Reporte:</Text>
-          <View className="gap-1.5 mb-4">
-            {CATEGORIES.map((c) => {
-              const selected = category === c.id;
-              return (
-                <TouchableOpacity
-                  key={c.id}
-                  onPress={() => setCategory(c.id)}
-                  className={`p-2.5 rounded-xl border flex-row items-center justify-between ${
-                    selected ? 'border-primary bg-primary/10' : 'border-slate-200 bg-slate-50'
-                  }`}
-                >
-                  <Text className={`text-xs font-semibold ${selected ? 'text-primary' : 'text-slate-700'}`}>
-                    {c.label}
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {hasSpecificOrder ? (
+              // Formulario específico para un servicio
+              <>
+                <Text className="text-xs font-bold text-slate-700 mb-2">Motivo del Reporte:</Text>
+                <View className="gap-1.5 mb-4">
+                  {CATEGORIES.map((c) => {
+                    const selected = category === c.id;
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        onPress={() => setCategory(c.id)}
+                        className={`p-2.5 rounded-xl border flex-row items-center justify-between ${
+                          selected ? 'border-primary bg-primary/10' : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <Text className={`text-xs font-semibold ${selected ? 'text-primary' : 'text-slate-700'}`}>
+                          {c.label}
+                        </Text>
+                        {selected && <Text className="text-xs text-primary font-bold">✓</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text className="text-xs font-bold text-slate-700 mb-1">Detalles de lo Sucedido:</Text>
+                <TextInput
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Describe qué ocurrió, objeto olvidado o motivo de tu reporte..."
+                  placeholderTextColor="#94A3B8"
+                  multiline
+                  numberOfLines={4}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 mb-4"
+                />
+
+                <View className="flex-row gap-2">
+                  <Button
+                    title="Cancelar"
+                    variant="outline"
+                    onPress={onClose}
+                    className="flex-1 py-2.5"
+                    disabled={loading}
+                  />
+                  <Button
+                    title="Enviar Reporte"
+                    variant="primary"
+                    onPress={handleSubmit}
+                    loading={loading}
+                    className="flex-1 py-2.5"
+                  />
+                </View>
+              </>
+            ) : (
+              // Centro de Ayuda General cuando no hay pedido activo seleccionado
+              <View className="gap-3">
+                <View className="bg-orange-50 border border-orange-200 rounded-2xl p-4 items-center text-center">
+                  <Text className="text-3xl mb-1">🎧</Text>
+                  <Text className="text-sm font-black text-slate-800 text-center">
+                    ¿En qué podemos ayudarte hoy?
                   </Text>
-                  {selected && <Text className="text-xs text-primary font-bold">✓</Text>}
+                  <Text className="text-xs text-slate-600 text-center mt-1">
+                    Nuestro equipo de atención al cliente está siempre listo para resolver tus dudas o atender emergencias.
+                  </Text>
+                </View>
+
+                {/* Botón WhatsApp */}
+                <TouchableOpacity
+                  onPress={handleOpenWhatsApp}
+                  activeOpacity={0.8}
+                  className="bg-emerald-600 p-3.5 rounded-2xl flex-row items-center justify-between shadow-sm active:bg-emerald-700"
+                >
+                  <View className="flex-row items-center gap-2.5">
+                    <Text className="text-2xl">💬</Text>
+                    <View>
+                      <Text className="text-white text-xs font-black">Chat de Soporte por WhatsApp</Text>
+                      <Text className="text-emerald-100 text-[11px]">Respuesta rápida en minutos</Text>
+                    </View>
+                  </View>
+                  <Text className="text-white font-bold text-sm">→</Text>
                 </TouchableOpacity>
-              );
-            })}
-          </View>
 
-          {/* Descripción */}
-          <Text className="text-xs font-bold text-slate-700 mb-1">Detalles de lo Sucedido:</Text>
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Describe qué ocurrió, descripción del objeto olvidado o motivo de tu queja..."
-            placeholderTextColor="#94A3B8"
-            multiline
-            numberOfLines={4}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 mb-4"
-          />
+                {/* Botón Emergencia 123 */}
+                <TouchableOpacity
+                  onPress={handleCallEmergency}
+                  activeOpacity={0.8}
+                  className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex-row items-center justify-between"
+                >
+                  <View className="flex-row items-center gap-2.5">
+                    <Text className="text-2xl">🚨</Text>
+                    <View>
+                      <Text className="text-rose-800 text-xs font-black">Línea de Emergencias 123</Text>
+                      <Text className="text-rose-600 text-[11px]">Policía y auxilio nacional</Text>
+                    </View>
+                  </View>
+                  <Text className="text-rose-700 font-bold text-sm">📞</Text>
+                </TouchableOpacity>
 
-          <View className="flex-row gap-2">
-            <Button
-              title="Cancelar"
-              variant="outline"
-              onPress={onClose}
-              className="flex-1 py-2.5"
-              disabled={loading}
-            />
-            <Button
-              title="Enviar Reporte"
-              variant="primary"
-              onPress={handleSubmit}
-              loading={loading}
-              className="flex-1 py-2.5"
-            />
-          </View>
+                {/* Botón Reportar Servicio desde Historial */}
+                {onOpenHistory && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      onClose();
+                      onOpenHistory();
+                    }}
+                    activeOpacity={0.8}
+                    className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl flex-row items-center justify-between active:bg-slate-100"
+                  >
+                    <View className="flex-row items-center gap-2.5">
+                      <Text className="text-2xl">📜</Text>
+                      <View>
+                        <Text className="text-slate-800 text-xs font-black">Reportar un Viaje Anterior</Text>
+                        <Text className="text-slate-500 text-[11px]">Selecciona el viaje desde tu historial</Text>
+                      </View>
+                    </View>
+                    <Text className="text-slate-600 font-bold text-sm">→</Text>
+                  </TouchableOpacity>
+                )}
+
+                <Button
+                  title="Cerrar"
+                  variant="outline"
+                  onPress={onClose}
+                  className="w-full mt-2 py-2.5"
+                />
+              </View>
+            )}
+          </ScrollView>
         </View>
       </View>
     </Modal>

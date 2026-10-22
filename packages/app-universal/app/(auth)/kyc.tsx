@@ -23,7 +23,11 @@ export default function KycScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="bg-slate-50 px-6 py-10">
+    <ScrollView
+      contentContainerStyle={{ flexGrow: 1 }}
+      keyboardShouldPersistTaps="handled"
+      className="bg-slate-50 px-6 py-10"
+    >
       <View className="w-full max-w-md self-center bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
         <Text className="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">
           Verificación de Identidad (KYC)

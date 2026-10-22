@@ -79,9 +79,22 @@ export const ChatsModal: React.FC<ChatsModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      statusBarTranslucent={true}
+      onRequestClose={onClose}
+    >
       <View className="flex-1 justify-end bg-black/60">
-        <View className="bg-white rounded-t-3xl max-h-[85%] p-5 shadow-2xl">
+        {/* Backdrop touchable to dismiss */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={onClose}
+          className="flex-1"
+        />
+
+        <View className="bg-white rounded-t-3xl max-h-[85%] p-5 shadow-2xl z-10">
           {/* Header */}
           <View className="flex-row items-center justify-between pb-3 border-b border-slate-100">
             <View className="flex-row items-center gap-2">
@@ -101,7 +114,11 @@ export const ChatsModal: React.FC<ChatsModalProps> = ({
           </View>
 
           {/* Lista de Chats */}
-          <ScrollView className="py-2">
+          <ScrollView
+            className="py-2"
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {loading ? (
               <View className="py-12 items-center">
                 <ActivityIndicator size="large" color="#FF6B00" />

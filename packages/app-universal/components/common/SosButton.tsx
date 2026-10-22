@@ -17,7 +17,7 @@ export const SosButton: React.FC<SosButtonProps> = ({ orderId, className = '' })
   };
 
   const handleShareTracking = () => {
-    const trackingUrl = `https://app.midominio.com/tracking/${orderId}`;
+    const trackingUrl = `https://domiapp.adhsolutions.tech/track/${orderId}`;
     const text = encodeURIComponent(
       `¡Hola! Estoy en un servicio activo y te comparto mi ubicación y trayecto en vivo por seguridad: ${trackingUrl}`
     );
@@ -36,9 +36,22 @@ export const SosButton: React.FC<SosButtonProps> = ({ orderId, className = '' })
         <Text className="text-white text-xs font-black tracking-wider">🆘 SOS</Text>
       </TouchableOpacity>
 
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={true}
+        statusBarTranslucent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
         <View className="flex-1 justify-center items-center bg-black/60 px-4">
-          <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl items-center border border-red-100">
+          {/* Backdrop touchable */}
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setModalVisible(false)}
+            className="absolute inset-0"
+          />
+
+          <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl items-center border border-red-100 z-10">
             <View className="w-14 h-14 bg-red-100 rounded-full items-center justify-center mb-3">
               <Text className="text-3xl">🚨</Text>
             </View>

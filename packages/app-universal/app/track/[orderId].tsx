@@ -87,8 +87,7 @@ export default function PublicTrackScreen() {
   }, [orderId]);
 
   const handleShareWhatsApp = () => {
-    if (!orderId) return;
-    const currentUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : `https://tuapp.com/track/${orderId}`;
+    const currentUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : `https://domiapp.adhsolutions.tech/track/${orderId}`;
     const text = encodeURIComponent(`📍 Sigue mi recorrido en tiempo real aquí: ${currentUrl}`);
     const whatsappUrl = `https://api.whatsapp.com/send?text=${text}`;
 

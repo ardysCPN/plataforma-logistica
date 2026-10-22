@@ -163,9 +163,20 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
 
   function renderGuideModal() {
     return (
-      <Modal visible={showGuideModal} animationType="slide" transparent>
+      <Modal
+        visible={showGuideModal}
+        animationType="slide"
+        transparent={true}
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowGuideModal(false)}
+      >
         <View className="flex-1 bg-black/75 justify-end sm:justify-center p-4">
-          <View className="bg-white rounded-3xl max-w-md w-full self-center p-6 shadow-2xl">
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setShowGuideModal(false)}
+            className="absolute inset-0"
+          />
+          <View className="bg-white rounded-3xl max-w-md w-full self-center p-6 shadow-2xl z-10">
             <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <View className="flex-row items-center gap-2">
                 <Text className="text-2xl">📲</Text>

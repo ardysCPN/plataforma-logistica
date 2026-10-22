@@ -43,9 +43,22 @@ export const RatingModal: React.FC<RatingModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="fade" transparent={true}>
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent={true}
+      statusBarTranslucent={true}
+      onRequestClose={onClose}
+    >
       <View className="flex-1 justify-center items-center bg-black/60 px-4">
-        <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl items-center">
+        {/* Backdrop touchable */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={onClose}
+          className="absolute inset-0"
+        />
+
+        <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl items-center z-10">
           <Text className="text-xl font-bold text-slate-900 mb-1 text-center">
             Califica el Servicio
           </Text>

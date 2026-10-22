@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, Vibration } from 'react-native';
 import { appStorage } from './storage';
 
 let audioCtx: AudioContext | null = null;
@@ -70,6 +70,14 @@ export const soundNotification = {
    */
   playChime(): void {
     if (!this.isSoundEnabled()) return;
+
+    if (Platform.OS !== 'web') {
+      try {
+        Vibration.vibrate([0, 100, 60, 140]);
+      } catch {}
+      return;
+    }
+
     const ctx = getAudioContext();
     if (!ctx) return;
 
@@ -112,6 +120,14 @@ export const soundNotification = {
    */
   playMessageTone(): void {
     if (!this.isSoundEnabled()) return;
+
+    if (Platform.OS !== 'web') {
+      try {
+        Vibration.vibrate(100);
+      } catch {}
+      return;
+    }
+
     const ctx = getAudioContext();
     if (!ctx) return;
 

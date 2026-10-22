@@ -41,6 +41,7 @@ if (Platform.OS !== 'web') {
 
 let webWatchId: number | null = null;
 let webPollInterval: ReturnType<typeof setInterval> | null = null;
+let nativeWatchSubscription: Location.LocationSubscription | null = null;
 
 export const locationTracker = {
   getCachedLocation(): { latitude: number; longitude: number } | null {
@@ -94,11 +95,23 @@ export const locationTracker = {
       return false;
     }
 
-    const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
-    if (foregroundStatus !== 'granted') return false;
+    try {
+      const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
+      if (foregroundStatus !== 'granted') return false;
 
-    const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-    return backgroundStatus === 'granted';
+      appStorage.setItem('gps_permission_granted', 'true');
+
+      // Intentar solicitar permiso en segundo plano (para conductores), sin bloquear si solo otorgan primer plano
+      try {
+        await Location.requestBackgroundPermissionsAsync();
+      } catch {
+        // En Android 11+ el permiso de segundo plano es opcional
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   async getCurrentLocation(): Promise<{ latitude: number; longitude: number } | null> {
@@ -189,18 +202,43 @@ export const locationTracker = {
       return;
     }
 
-    const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (!hasStarted) {
-      await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 4000, // Cada 4 segundos
-        distanceInterval: 15, // Cada 15 metros
-        foregroundService: {
-          notificationTitle: 'Plataforma Conductor Activo',
-          notificationBody: 'Transmitiendo posición GPS de entrega en tiempo real',
-          notificationColor: '#FF6B00',
-        },
-      });
+    try {
+      const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+      if (!hasStarted) {
+        await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 4000, // Cada 4 segundos
+          distanceInterval: 15, // Cada 15 metros
+          foregroundService: {
+            notificationTitle: 'DOMY Conductor Activo',
+            notificationBody: 'Transmitiendo posición GPS de entrega en tiempo real',
+            notificationColor: '#FF6B00',
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('Fallback a watchPositionAsync en primer plano:', err);
+      try {
+        if (!nativeWatchSubscription) {
+          nativeWatchSubscription = await Location.watchPositionAsync(
+            { accuracy: Location.Accuracy.High, timeInterval: 4000, distanceInterval: 15 },
+            (location) => {
+              const socket = getSocket();
+              if (socket && socket.connected) {
+                socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
+                  latitude: location.coords.latitude,
+                  longitude: location.coords.longitude,
+                  bearing: location.coords.heading || 0,
+                  speed: location.coords.speed || 0,
+                  activeOrderIds: activeOrdersList,
+                });
+              }
+            }
+          );
+        }
+      } catch (watchErr) {
+        console.warn('Error al iniciar watchPositionAsync:', watchErr);
+      }
     }
   },
 
@@ -217,9 +255,18 @@ export const locationTracker = {
       return;
     }
 
-    const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-    if (hasStarted) {
-      await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    if (nativeWatchSubscription) {
+      nativeWatchSubscription.remove();
+      nativeWatchSubscription = null;
+    }
+
+    try {
+      const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+      if (hasStarted) {
+        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+      }
+    } catch {
+      // Ignorar error al detener tarea en segundo plano
     }
   },
 };

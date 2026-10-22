@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { api } from '../../services/api';
-import { PqrModal } from './PqrModal';
 
 interface HistoryItem {
   id: string;
@@ -26,6 +25,7 @@ interface HistoryModalProps {
   onClose: () => void;
   isCourier?: boolean;
   onSelectActiveOrder?: (orderId: string) => void;
+  onOpenPqr?: (orderId: string) => void;
 }
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
@@ -33,11 +33,10 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   onClose,
   isCourier = false,
   onSelectActiveOrder,
+  onOpenPqr,
 }) => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedPqrOrderId, setSelectedPqrOrderId] = useState<string | null>(null);
-
 
   useEffect(() => {
     if (visible) {
@@ -55,9 +54,22 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   }, [visible]);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      statusBarTranslucent={true}
+      onRequestClose={onClose}
+    >
       <View className="flex-1 bg-black/60 justify-end">
-        <View className="bg-white rounded-t-3xl max-h-[85%] flex-col p-5 shadow-2xl">
+        {/* Backdrop dismiss touchable */}
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={onClose}
+          className="flex-1"
+        />
+
+        <View className="bg-white rounded-t-3xl max-h-[85%] flex-col p-5 shadow-2xl z-10">
           {/* Encabezado */}
           <View className="flex-row items-center justify-between pb-4 border-b border-slate-100">
             <View>
@@ -77,7 +89,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
           </View>
 
           {/* Lista de Registros */}
-          <ScrollView className="mt-4" showsVerticalScrollIndicator={false}>
+          <ScrollView
+            className="mt-4"
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             {loading ? (
               <View className="py-12 items-center">
                 <ActivityIndicator size="large" color="#FF6B00" />
@@ -216,31 +232,26 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       </TouchableOpacity>
                     )}
 
-                    {/* Botón de Reporte PQR / Objeto Olvidado */}
-                    <TouchableOpacity
-                      onPress={() => setSelectedPqrOrderId(item.id)}
-                      className="mt-2 pt-2 border-t border-slate-200/50 flex-row items-center justify-between active:opacity-75"
-                    >
-                      <Text className="text-[11px] text-slate-400">¿Inconvenientes con el viaje?</Text>
-                      <Text className="text-[11px] font-bold text-amber-700">⚠️ Reportar PQR / Objeto Olvidado</Text>
-                    </TouchableOpacity>
+                    {/* Botón de Reporte PQR / Objeto Olvidado sin Modal anidado */}
+                    {onOpenPqr && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          onClose();
+                          onOpenPqr(item.id);
+                        }}
+                        className="mt-2 pt-2 border-t border-slate-200/50 flex-row items-center justify-between active:opacity-75"
+                      >
+                        <Text className="text-[11px] text-slate-400">¿Inconvenientes con el viaje?</Text>
+                        <Text className="text-[11px] font-bold text-amber-700">⚠️ Reportar PQR / Objeto Olvidado</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 );
               })
             )}
           </ScrollView>
-
-          {/* Modal de PQR / Objetos Olvidados */}
-          {selectedPqrOrderId && (
-            <PqrModal
-              visible={Boolean(selectedPqrOrderId)}
-              orderId={selectedPqrOrderId}
-              onClose={() => setSelectedPqrOrderId(null)}
-            />
-          )}
         </View>
       </View>
     </Modal>
   );
 };
-

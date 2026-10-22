@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { geocodingService, GeocodingSuggestion } from '../../services/geocodingService';
 import { GeoPoint } from '@plataforma/shared';
@@ -37,11 +37,17 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
     if (text.trim().length >= 3) {
       setLoading(true);
       debounceTimerRef.current = setTimeout(async () => {
-        const results = await geocodingService.searchAddress(text, nearLocation);
-        setSuggestions(results);
-        setIsOpen(results.length > 0);
-        setLoading(false);
-      }, 350);
+        try {
+          const results = await geocodingService.searchAddress(text, nearLocation);
+          setSuggestions(results);
+          setIsOpen(results.length > 0);
+        } catch {
+          setSuggestions([]);
+          setIsOpen(false);
+        } finally {
+          setLoading(false);
+        }
+      }, 300);
     } else {
       setSuggestions([]);
       setIsOpen(false);
@@ -56,7 +62,13 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   };
 
   return (
-    <View className="w-full mb-3 relative z-30">
+    <View
+      className="w-full mb-3 relative"
+      style={{
+        zIndex: isOpen ? 50 : 1,
+        elevation: isOpen ? 30 : 0,
+      }}
+    >
       <View className="flex-row items-center justify-between mb-1">
         <Text className="text-xs font-bold text-slate-700">{label}</Text>
         {rightAction}
@@ -91,11 +103,11 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
         ) : null}
       </View>
 
-      {/* Menú Flotante de Sugerencias Nominatim */}
+      {/* Menú Flotante de Sugerencias OpenStreetMap */}
       {isOpen && suggestions.length > 0 && (
         <View
-          className="absolute top-[68px] left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden"
-          style={{ elevation: 20, zIndex: 9999, maxHeight: 220 }}
+          className="absolute top-[68px] left-0 right-0 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden"
+          style={{ elevation: 30, zIndex: 9999, maxHeight: 220 }}
         >
           <ScrollView
             nestedScrollEnabled={true}
@@ -105,8 +117,9 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
             {suggestions.map((s, idx) => (
               <TouchableOpacity
                 key={`${s.latitude}_${s.longitude}_${idx}`}
+                activeOpacity={0.7}
                 onPress={() => handleSelect(s)}
-                className="px-4 py-2.5 border-b border-slate-100 flex-row items-center gap-2.5 active:bg-slate-50"
+                className="px-4 py-2.5 border-b border-slate-100 flex-row items-center gap-2.5 active:bg-orange-50/50"
               >
                 <Text className="text-base">📍</Text>
                 <View className="flex-1">
