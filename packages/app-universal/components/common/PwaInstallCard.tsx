@@ -5,6 +5,8 @@ interface PwaInstallCardProps {
   variant?: 'card' | 'compact' | 'drawer';
 }
 
+const APK_DOWNLOAD_URL = 'https://github.com/ardysCPN/plataforma-logistica/releases/latest/download/domy.apk';
+
 export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card' }) => {
   const [canInstall, setCanInstall] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -145,7 +147,7 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
           <TouchableOpacity
             onPress={() => {
               if (typeof window !== 'undefined') {
-                window.location.href = '/downloads/domy.apk';
+                window.location.href = APK_DOWNLOAD_URL;
               }
             }}
             className="mt-2.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 py-2.5 px-4 rounded-2xl flex-row items-center justify-center gap-2"
@@ -236,7 +238,7 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
                     onPress={() => {
                       setShowGuideModal(false);
                       if (typeof window !== 'undefined') {
-                        window.location.href = '/downloads/domy.apk';
+                        window.location.href = APK_DOWNLOAD_URL;
                       }
                     }}
                     className="bg-emerald-600 active:bg-emerald-700 py-3 rounded-xl flex-row items-center justify-center gap-2 shadow"

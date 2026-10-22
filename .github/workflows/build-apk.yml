@@ -22,6 +22,9 @@ on:
 jobs:
   build-apk:
     name: Compilación APK en Expo EAS Cloud
+    # Control de cuota Expo EAS: Solo se ejecuta si se dispara manualmente desde GitHub
+    # o si el mensaje del commit incluye la etiqueta [build-apk].
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build-apk]')
     runs-on: ubuntu-latest
     permissions:
       contents: write
