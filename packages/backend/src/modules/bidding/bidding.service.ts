@@ -7,8 +7,9 @@ export const biddingService = {
     // 1. Validar que el conductor exista y no esté suspendido/bloqueado
     const courierRes = await db.query(
       `SELECT u.full_name as "fullName", u.status, u.wallet_balance as "walletBalance",
-              u.rating_avg as "ratingAvg", cp.vehicle_type as "vehicleType",
-              cp.vehicle_plate as "vehiclePlate", cp.active_orders_count as "activeOrdersCount"
+              u.rating_avg as "ratingAvg", u.avatar_url as "avatarUrl", cp.vehicle_type as "vehicleType",
+              cp.vehicle_plate as "vehiclePlate", cp.vehicle_model as "vehicleModel",
+              cp.vehicle_color as "vehicleColor", cp.active_orders_count as "activeOrdersCount"
        FROM users u
        JOIN courier_profiles cp ON u.id = cp.user_id
        WHERE u.id = $1`,
@@ -66,8 +67,11 @@ export const biddingService = {
       courierId,
       courierName: courier.fullName,
       courierRating: Number(courier.ratingAvg || 5.0),
+      courierAvatarUrl: courier.avatarUrl || null,
       vehicleType: courier.vehicleType,
       vehiclePlate: courier.vehiclePlate,
+      vehicleModel: courier.vehicleModel || null,
+      vehicleColor: courier.vehicleColor || null,
       bidAmount: Number(input.bidAmount),
       etaMinutes: input.etaMinutes || 10,
       createdAt: newBid.createdAt,
@@ -141,7 +145,8 @@ export const biddingService = {
       // Obtener datos detallados para el evento de Sockets
       const detailsRes = await client.query(
         `SELECT u.full_name as "courierName", u.phone as "courierPhone", u.rating_avg as "ratingAvg",
-                cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate",
+                u.avatar_url as "courierAvatarUrl", cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate",
+                cp.vehicle_model as "vehicleModel", cp.vehicle_color as "vehicleColor",
                 uc.full_name as "clientName", uc.phone as "clientPhone"
          FROM users u
          JOIN courier_profiles cp ON u.id = cp.user_id
@@ -159,8 +164,11 @@ export const biddingService = {
           id: bid.courierId,
           fullName: details.courierName || 'Conductor',
           phone: details.courierPhone || '',
+          avatarUrl: details.courierAvatarUrl || null,
           vehicleType: details.vehicleType || 'MOTO',
           vehiclePlate: details.vehiclePlate || '',
+          vehicleModel: details.vehicleModel || null,
+          vehicleColor: details.vehicleColor || null,
           ratingAvg: Number(details.ratingAvg || 5.0),
         },
         client: {

@@ -48,8 +48,19 @@ app.get('/health', async (_req: Request, res: Response) => {
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'Plataforma Logística API',
-    version: '1.0.0',
+    version: '1.0.4',
     documentation: 'Especificación SDD en /agent.md',
+  });
+});
+
+app.get('/api/version', (_req: Request, res: Response) => {
+  res.json({
+    latestVersion: '1.0.4',
+    latestVersionCode: 5,
+    minRequiredVersion: '1.0.0',
+    apkDownloadUrl: 'https://domiapp.adhsolutions.tech/downloads/domy.apk',
+    releaseNotes: 'Fotos de perfil, radar de búsqueda en vivo, notificaciones audibles en el sistema y actualización automática integrada.',
+    releaseDate: '2026-10-22',
   });
 });
 

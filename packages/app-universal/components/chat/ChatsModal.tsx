@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ScrollView, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { api } from '../../services/api';
 
 export interface ChatConversation {
@@ -86,12 +86,11 @@ export const ChatsModal: React.FC<ChatsModalProps> = ({
       statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <View className="flex-1 justify-end bg-black/60">
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
         {/* Backdrop touchable to dismiss */}
-        <TouchableOpacity
-          activeOpacity={1}
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
           onPress={onClose}
-          className="flex-1"
         />
 
         <View className="bg-white rounded-t-3xl max-h-[85%] p-5 shadow-2xl z-10">

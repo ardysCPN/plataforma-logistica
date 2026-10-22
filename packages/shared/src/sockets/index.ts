@@ -66,8 +66,11 @@ export interface SocketBidReceivedPayload {
   courierId: string;
   courierName: string;
   courierRating: number;
+  courierAvatarUrl?: string | null;
   vehicleType: VehicleType;
   vehiclePlate?: string | null;
+  vehicleModel?: string | null;
+  vehicleColor?: string | null;
   bidAmount: number;
   etaMinutes?: number | null;
   createdAt: string;
@@ -87,9 +90,12 @@ export interface SocketOrderAssignedPayload {
     id: string;
     fullName: string;
     phone: string;
+    avatarUrl?: string | null;
     ratingAvg: number;
     vehicleType: VehicleType;
     vehiclePlate?: string | null;
+    vehicleModel?: string | null;
+    vehicleColor?: string | null;
   };
   client: {
     id: string;

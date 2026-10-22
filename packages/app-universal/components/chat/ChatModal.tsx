@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
 import { Button } from '../common/Button';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -91,27 +91,33 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      transparent={false}
+      transparent={true}
       statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1 bg-slate-50"
-      >
-        {/* Cabecera del Chat */}
-        <View className="bg-secondary px-5 py-4 pt-12 flex-row items-center justify-between shadow-md">
-          <View>
-            <Text className="text-white font-bold text-lg">{counterpartName}</Text>
-            <Text className="text-xs text-emerald-400 font-medium">● Chat en tiempo real</Text>
-          </View>
-          <TouchableOpacity
-            onPress={onClose}
-            className="bg-white/10 px-3.5 py-1.5 rounded-full active:bg-white/20"
+      <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+        >
+          {/* Cabecera del Chat */}
+          <View
+            style={{
+              paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 12 : 48,
+            }}
+            className="bg-secondary px-5 pb-4 flex-row items-center justify-between shadow-md"
           >
-            <Text className="text-white text-xs font-semibold">Cerrar ✕</Text>
-          </TouchableOpacity>
-        </View>
+            <View>
+              <Text className="text-white font-bold text-lg">{counterpartName}</Text>
+              <Text className="text-xs text-emerald-400 font-medium">● Chat en tiempo real</Text>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              className="bg-white/10 px-3.5 py-1.5 rounded-full active:bg-white/20"
+            >
+              <Text className="text-white text-xs font-semibold">Cerrar ✕</Text>
+            </TouchableOpacity>
+          </View>
 
         {/* Lista de Mensajes */}
         <ScrollView
@@ -189,6 +195,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           />
         </View>
       </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 };

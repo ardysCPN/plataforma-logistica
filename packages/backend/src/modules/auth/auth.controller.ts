@@ -51,4 +51,48 @@ export const authController = {
       res.status(404).json({ error: message });
     }
   },
+
+  async updateAvatar(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const { avatarUrl } = req.body;
+      if (!avatarUrl) {
+        res.status(400).json({ error: 'avatarUrl requerido' });
+        return;
+      }
+      const updatedUser = await authService.updateAvatar(req.user.id, avatarUrl);
+      res.json({ user: updatedUser });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error actualizando avatar';
+      res.status(400).json({ error: message });
+    }
+  },
+
+  async updateProfile(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const data = await authService.updateProfile(req.user.id, req.body);
+      res.json(data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error actualizando perfil';
+      res.status(400).json({ error: message });
+    }
+  },
+
+  async getPublicCourier(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const courier = await authService.getPublicCourier(id);
+      res.json(courier);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Conductor no encontrado';
+      res.status(404).json({ error: message });
+    }
+  },
 };

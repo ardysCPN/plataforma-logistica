@@ -18,6 +18,8 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [vehicleType, setVehicleType] = useState<VehicleType>('MOTO');
   const [vehiclePlate, setVehiclePlate] = useState('');
+  const [vehicleModel, setVehicleModel] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
 
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
@@ -51,6 +53,8 @@ export default function RegisterScreen() {
           password,
           vehicleType,
           vehiclePlate: vehiclePlate || undefined,
+          vehicleModel: vehicleModel.trim() || undefined,
+          vehicleColor: vehicleColor.trim() || undefined,
           termsAccepted: true,
         });
         router.replace('/(auth)/kyc');
@@ -183,13 +187,29 @@ export default function RegisterScreen() {
             </View>
 
             {vehicleType !== 'BICYCLE' && (
-              <Input
-                label="Placa del Vehículo *"
-                placeholder="Ej. XYZ123"
-                autoCapitalize="characters"
-                value={vehiclePlate}
-                onChangeText={setVehiclePlate}
-              />
+              <>
+                <Input
+                  label="Placa del Vehículo *"
+                  placeholder="Ej. XYZ123"
+                  autoCapitalize="characters"
+                  value={vehiclePlate}
+                  onChangeText={setVehiclePlate}
+                />
+
+                <Input
+                  label="Modelo / Marca del Vehículo"
+                  placeholder="Ej. Chevrolet Spark GT / Yamaha NMax"
+                  value={vehicleModel}
+                  onChangeText={setVehicleModel}
+                />
+
+                <Input
+                  label="Color del Vehículo"
+                  placeholder="Ej. Rojo metalizado, Negro, Blanco"
+                  value={vehicleColor}
+                  onChangeText={setVehicleColor}
+                />
+              </>
             )}
           </>
         )}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, TextInput, Pressable, StyleSheet } from 'react-native';
 import { Button } from './Button';
 
 interface RatingModalProps {
@@ -50,12 +50,11 @@ export const RatingModal: React.FC<RatingModalProps> = ({
       statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <View className="flex-1 justify-center items-center bg-black/60 px-4">
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: 16 }}>
         {/* Backdrop touchable */}
-        <TouchableOpacity
-          activeOpacity={1}
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
           onPress={onClose}
-          className="absolute inset-0"
         />
 
         <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl items-center z-10">

@@ -8,7 +8,11 @@ import {
   Dimensions,
   StyleSheet,
   BackHandler,
+  Image,
+  Linking,
+  Alert,
 } from 'react-native';
+import { versionService, VersionCheckResult, CURRENT_APP_VERSION } from '../../services/versionService';
 
 interface AppDrawerProps {
   visible: boolean;
@@ -17,6 +21,7 @@ interface AppDrawerProps {
   isCourier?: boolean;
   darkMode: boolean;
   onToggleDarkMode: () => void;
+  onOpenProfile?: () => void;
   onOpenChats: () => void;
   onOpenHistory: () => void;
   onOpenDestinationMode?: () => void;
@@ -33,6 +38,7 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
   isCourier = false,
   darkMode,
   onToggleDarkMode,
+  onOpenProfile,
   onOpenChats,
   onOpenHistory,
   onOpenDestinationMode,
@@ -42,11 +48,18 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
   unreadChatsCount = 0,
 }) => {
   const [shouldRender, setShouldRender] = useState(visible);
+  const [versionResult, setVersionResult] = useState<VersionCheckResult | null>(null);
   const screenWidth = Dimensions.get('window').width;
   const drawerWidth = Math.min(screenWidth * 0.82, 340);
 
   const slideAnim = useRef(new Animated.Value(-drawerWidth)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      versionService.checkVersion().then((res) => setVersionResult(res)).catch(() => {});
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (visible) {
@@ -145,11 +158,28 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
               {/* Encabezado del Perfil */}
               <View className="bg-secondary p-6 pt-12 pb-6">
                 <View className="flex-row items-center justify-between mb-4">
-                  <View className="w-14 h-14 rounded-full bg-primary/20 border-2 border-primary items-center justify-center">
-                    <Text className="text-xl font-black text-primary">
-                      {user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
-                    </Text>
-                  </View>
+                  <TouchableOpacity
+                    onPress={() => onOpenProfile && handleItemPress(onOpenProfile)}
+                    activeOpacity={0.8}
+                    className="relative"
+                  >
+                    {user?.avatarUrl ? (
+                      <Image
+                        source={{ uri: user.avatarUrl }}
+                        className="w-14 h-14 rounded-full border-2 border-primary"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View className="w-14 h-14 rounded-full bg-primary/20 border-2 border-primary items-center justify-center">
+                        <Text className="text-xl font-black text-primary">
+                          {user?.fullName?.charAt(0)?.toUpperCase() || user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                        </Text>
+                      </View>
+                    )}
+                    <View className="absolute bottom-0 right-0 bg-primary w-5 h-5 rounded-full items-center justify-center border border-white">
+                      <Text className="text-[10px] text-white">✏️</Text>
+                    </View>
+                  </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={onClose}
@@ -159,12 +189,17 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
                   </TouchableOpacity>
                 </View>
 
-                <Text className="text-white font-black text-lg" numberOfLines={1}>
-                  {user?.fullName || 'Usuario'}
-                </Text>
-                <Text className="text-slate-300 text-xs mt-0.5">
-                  {user?.phone || user?.email || 'Cuenta Activa'}
-                </Text>
+                <TouchableOpacity
+                  onPress={() => onOpenProfile && handleItemPress(onOpenProfile)}
+                  activeOpacity={0.8}
+                >
+                  <Text className="text-white font-black text-lg" numberOfLines={1}>
+                    {user?.fullName || user?.name || 'Usuario'}
+                  </Text>
+                  <Text className="text-slate-300 text-xs mt-0.5">
+                    {user?.phone || user?.email || 'Cuenta Activa'}
+                  </Text>
+                </TouchableOpacity>
 
                 <View className="flex-row items-center gap-2 mt-2">
                   <View className="bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/40">
@@ -202,6 +237,18 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
 
               {/* Enlaces de Navegación del Menú */}
               <View className="p-4 gap-1.5">
+                {onOpenProfile && (
+                  <TouchableOpacity
+                    onPress={() => handleItemPress(onOpenProfile)}
+                    className="flex-row items-center gap-3 p-3.5 rounded-2xl active:bg-slate-100 dark:active:bg-slate-800"
+                  >
+                    <Text className="text-xl">👤</Text>
+                    <Text className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                      Mi Perfil
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   onPress={() => handleItemPress(onOpenChats)}
                   className="flex-row items-center justify-between p-3.5 rounded-2xl active:bg-slate-100 dark:active:bg-slate-800"
@@ -283,9 +330,37 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
                 <Text className="text-red-600 dark:text-red-400 font-bold text-sm">🚪 Cerrar Sesión</Text>
               </TouchableOpacity>
 
-              <Text className="text-[10px] text-slate-400 text-center mt-3 font-semibold">
-                DOMY • Plataforma Logística v1.0.3
-              </Text>
+              {/* Indicador de Versión & Actualización */}
+              <View className="mt-3 items-center">
+                {versionResult?.isOutdated ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (versionResult.apkDownloadUrl) {
+                        Linking.openURL(versionResult.apkDownloadUrl).catch(() => {
+                          Alert.alert('Actualizar', 'Descarga la nueva versión desde domiapp.adhsolutions.tech/downloads/domy.apk');
+                        });
+                      }
+                    }}
+                    className="bg-rose-500/10 border border-rose-500/30 px-3 py-1.5 rounded-full flex-row items-center gap-1.5 active:bg-rose-500/20"
+                  >
+                    <Text className="text-xs">🔴</Text>
+                    <Text className="text-[11px] font-bold text-rose-500">
+                      Desactualizado • Descargar v{versionResult.latestVersion}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View className="flex-row items-center gap-1">
+                    <Text className="text-[10px] text-emerald-500 font-bold">●</Text>
+                    <Text className="text-[10px] text-slate-400 font-semibold">
+                      v{CURRENT_APP_VERSION} • Al día
+                    </Text>
+                  </View>
+                )}
+
+                <Text className="text-[10px] text-slate-400 text-center mt-1 font-semibold">
+                  DOMY • Plataforma Logística
+                </Text>
+              </View>
             </View>
           </View>
         </Animated.View>

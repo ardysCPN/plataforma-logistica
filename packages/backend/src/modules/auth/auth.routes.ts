@@ -10,3 +10,6 @@ authRouter.post('/register/client', validate(registerClientSchema), authControll
 authRouter.post('/register/courier', validate(registerCourierSchema), authController.registerCourier);
 authRouter.post('/login', validate(loginSchema), authController.login);
 authRouter.get('/me', authenticateJWT, authController.me);
+authRouter.patch('/profile/avatar', authenticateJWT, authController.updateAvatar);
+authRouter.put('/profile', authenticateJWT, authController.updateProfile);
+authRouter.get('/courier/:id', authController.getPublicCourier);

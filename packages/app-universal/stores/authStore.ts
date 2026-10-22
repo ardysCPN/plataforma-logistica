@@ -17,6 +17,8 @@ interface AuthState {
   registerClient: (input: RegisterClientInput) => Promise<void>;
   registerCourier: (input: RegisterCourierInput) => Promise<void>;
   loadProfile: () => Promise<void>;
+  updateAvatar: (avatarUrl: string) => Promise<void>;
+  updateProfile: (data: { name?: string; vehicleModel?: string; vehicleColor?: string }) => Promise<void>;
   logout: () => void;
   clearError: () => void;
 }
@@ -120,6 +122,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch {
       // Ignorar error si no está autenticado
+    }
+  },
+
+  updateAvatar: async (avatarUrl: string) => {
+    const res = await api.patch<{ user: User }>('/api/auth/profile/avatar', { avatarUrl });
+    const updated = res.data.user;
+    set((state) => ({ user: { ...state.user, ...updated } as User }));
+    const current = get().user;
+    if (current) appStorage.setJSON('auth_user', current);
+  },
+
+  updateProfile: async (data: { name?: string; vehicleModel?: string; vehicleColor?: string }) => {
+    const res = await api.put<{ user: User; profile: CourierProfile | null }>('/api/auth/profile', data);
+    set({ user: res.data.user, courierProfile: res.data.profile });
+    appStorage.setJSON('auth_user', res.data.user);
+    if (res.data.profile) {
+      appStorage.setJSON('courier_profile', res.data.profile);
     }
   },
 

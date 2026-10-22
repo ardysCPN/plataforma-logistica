@@ -170,8 +170,12 @@ CREATE INDEX IF NOT EXISTS idx_orders_origin ON service_orders USING GIST (origi
 CREATE INDEX IF NOT EXISTS idx_orders_dest ON service_orders USING GIST (destination_point);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON service_orders (status);
 CREATE INDEX IF NOT EXISTS idx_chat_order ON chat_messages (order_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_topup_status ON topup_requests (status);
 CREATE INDEX IF NOT EXISTS idx_bids_order_courier ON order_bids (order_id, courier_id);
+
+-- 11. Columnas de Versión 1.0.4: Foto de Perfil y Detalle de Vehículo
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE courier_profiles ADD COLUMN IF NOT EXISTS vehicle_model VARCHAR(60);
+ALTER TABLE courier_profiles ADD COLUMN IF NOT EXISTS vehicle_color VARCHAR(40);
 `;
 
 /**

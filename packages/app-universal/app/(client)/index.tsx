@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator, Linking, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator, Linking, Modal, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UniversalMap, NearbyCourierMarker } from '../../components/map/UniversalMap';
 import { Input } from '../../components/common/Input';
@@ -12,12 +12,15 @@ import { RatingModal } from '../../components/common/RatingModal';
 import { HistoryModal } from '../../components/common/HistoryModal';
 import { PqrModal } from '../../components/common/PqrModal';
 import { AppDrawer } from '../../components/common/AppDrawer';
+import { ProfileModal } from '../../components/common/ProfileModal';
+import { CourierDetailModal, CourierDetailInfo } from '../../components/common/CourierDetailModal';
 import { NotificationBanner, BannerNotification } from '../../components/common/NotificationBanner';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { locationTracker } from '../../services/locationTracker';
 import { soundNotification } from '../../services/soundNotification';
+import { notificationService } from '../../services/notificationService';
 import { routeDeviationService } from '../../services/routeDeviationService';
 import { geocodingService } from '../../services/geocodingService';
 import {
@@ -74,6 +77,11 @@ export default function ClientHomeScreen() {
   const [historyVisible, setHistoryVisible] = useState(false);
   const [pqrModalVisible, setPqrModalVisible] = useState(false);
   const [selectedPqrOrderId, setSelectedPqrOrderId] = useState<string>('');
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [courierDetailVisible, setCourierDetailVisible] = useState(false);
+  const [selectedCourierDetail, setSelectedCourierDetail] = useState<CourierDetailInfo | null>(null);
+  const [selectedBidPrice, setSelectedBidPrice] = useState<number | undefined>(undefined);
+  const [selectedBidId, setSelectedBidId] = useState<string | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [activeNotification, setActiveNotification] = useState<BannerNotification | null>(null);
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
@@ -292,6 +300,11 @@ export default function ClientHomeScreen() {
         title: '💰 ¡Nueva Oferta de Conductor!',
         message: `${bid.courierName} ofrece $${Number(bid.bidAmount || 0).toLocaleString()} COP (⭐ ${(Number(bid.courierRating) || 5.0).toFixed(1)})`,
       });
+      notificationService.showSystemNotification({
+        title: '💰 ¡Nueva Oferta de Conductor!',
+        body: `${bid.courierName} ofrece $${Number(bid.bidAmount || 0).toLocaleString()} COP`,
+        sound: true,
+      });
     };
 
     const handleAssigned = (payload: SocketOrderAssignedPayload) => {
@@ -309,6 +322,11 @@ export default function ClientHomeScreen() {
         type: 'STATUS',
         title: '🎉 ¡Conductor Confirmado!',
         message: `${payload.courier.fullName} se dirige al punto de recogida en su ${payload.courier.vehicleType} ${payload.courier.vehiclePlate || ''}.`,
+      });
+      notificationService.showSystemNotification({
+        title: '🎉 ¡Conductor Confirmado!',
+        body: `${payload.courier.fullName} se dirige al punto de recogida.`,
+        sound: true,
       });
     };
 
@@ -328,6 +346,11 @@ export default function ClientHomeScreen() {
           type: 'STATUS',
           title: '🛵 Actualización del Viaje',
           message: statusText,
+        });
+        notificationService.showSystemNotification({
+          title: '🛵 Actualización del Viaje',
+          body: statusText,
+          sound: true,
         });
       }
     };
@@ -349,6 +372,11 @@ export default function ClientHomeScreen() {
             onPress: () => setChatVisible(true),
           });
         }
+        notificationService.showSystemNotification({
+          title: `💬 Mensaje de ${msg.senderName || 'Conductor'}`,
+          body: msg.content,
+          sound: true,
+        });
       }
     };
 
@@ -741,24 +769,58 @@ export default function ClientHomeScreen() {
                   </View>
                 ) : (
                   incomingBids.map((bid) => (
-                    <View
+                    <TouchableOpacity
                       key={bid.bidId}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        setSelectedCourierDetail({
+                          courierId: bid.courierId,
+                          name: bid.courierName,
+                          avatarUrl: (bid as any).courierAvatarUrl,
+                          rating: Number(bid.courierRating) || 5.0,
+                          vehicleType: bid.vehicleType,
+                          vehiclePlate: bid.vehiclePlate,
+                          vehicleModel: (bid as any).vehicleModel,
+                          vehicleColor: (bid as any).vehicleColor,
+                        });
+                        setSelectedBidPrice(Number(bid.bidAmount));
+                        setSelectedBidId(bid.bidId);
+                        setCourierDetailVisible(true);
+                      }}
                       className="bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-2 flex-row items-center justify-between"
                     >
-                      <View>
-                        <Text className="text-sm font-bold text-slate-900">{bid.courierName}</Text>
-                        <Text className="text-xs text-slate-500">
-                          ⭐ {(Number(bid.courierRating) || 5.0).toFixed(1)} • {bid.vehicleType} {bid.vehiclePlate || ''}
-                        </Text>
-                        {bid.etaMinutes && (
-                          <Text className="text-xs text-emerald-600 font-semibold mt-0.5">
-                            Llega en ~{bid.etaMinutes} mins
-                          </Text>
+                      <View className="flex-row items-center gap-2.5 flex-1 mr-2">
+                        {(bid as any).courierAvatarUrl ? (
+                          <Image
+                            source={{ uri: (bid as any).courierAvatarUrl }}
+                            className="w-12 h-12 rounded-full border-2 border-primary"
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View className="w-12 h-12 rounded-full bg-slate-800 items-center justify-center">
+                            <Text className="text-white font-black text-base">
+                              {(bid.courierName || 'C').charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
                         )}
+                        <View className="flex-1">
+                          <Text className="text-sm font-black text-slate-900">{bid.courierName}</Text>
+                          <Text className="text-xs text-slate-500">
+                            ⭐ {(Number(bid.courierRating) || 5.0).toFixed(1)} • {bid.vehicleType} {bid.vehiclePlate || ''}
+                          </Text>
+                          {(bid as any).vehicleModel ? (
+                            <Text className="text-[11px] text-slate-600 font-medium">
+                              {(bid as any).vehicleModel} • {(bid as any).vehicleColor || 'Estándar'}
+                            </Text>
+                          ) : null}
+                          <Text className="text-[10px] text-primary font-bold mt-0.5">
+                            🔍 Toca para ver perfil completo
+                          </Text>
+                        </View>
                       </View>
                       <View className="items-end gap-1.5">
                         <Text className="text-base font-black text-slate-900">
-                          ${Number(bid.bidAmount || 0).toLocaleString('es-CO')} COP
+                          ${Number(bid.bidAmount || 0).toLocaleString('es-CO')}
                         </Text>
                         <Button
                           title="Aceptar"
@@ -767,7 +829,7 @@ export default function ClientHomeScreen() {
                           className="py-1 px-3.5"
                         />
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))
                 )}
 
@@ -787,22 +849,51 @@ export default function ClientHomeScreen() {
               <View className="mt-3">
                 <View className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-3">
                   <View className="flex-row items-center justify-between mb-3">
-                    <View className="flex-row items-center gap-3">
-                      <View className="w-12 h-12 rounded-full bg-secondary items-center justify-center">
-                        <Text className="text-xl">🛵</Text>
-                      </View>
-                      <View>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        setSelectedCourierDetail({
+                          courierId: assignedCourier?.id,
+                          name: assignedCourier?.fullName || 'Conductor Asignado',
+                          avatarUrl: assignedCourier?.avatarUrl,
+                          rating: Number(assignedCourier?.ratingAvg) || 5.0,
+                          vehicleType: assignedCourier?.vehicleType,
+                          vehiclePlate: assignedCourier?.vehiclePlate,
+                          vehicleModel: assignedCourier?.vehicleModel,
+                          vehicleColor: assignedCourier?.vehicleColor,
+                        });
+                        setCourierDetailVisible(true);
+                      }}
+                      className="flex-row items-center gap-3 flex-1"
+                    >
+                      {assignedCourier?.avatarUrl ? (
+                        <Image
+                          source={{ uri: assignedCourier.avatarUrl }}
+                          className="w-12 h-12 rounded-full border-2 border-primary"
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View className="w-12 h-12 rounded-full bg-secondary items-center justify-center">
+                          <Text className="text-xl">🛵</Text>
+                        </View>
+                      )}
+                      <View className="flex-1">
                         <Text className="text-sm font-extrabold text-slate-900">
                           {assignedCourier?.fullName || 'Conductor Asignado'}
                         </Text>
                         <Text className="text-xs text-slate-500">
                           {assignedCourier?.vehicleType || 'MOTO'} • Placa: <Text className="font-bold text-slate-800">{assignedCourier?.vehiclePlate || 'N/A'}</Text>
                         </Text>
-                        <Text className="text-xs text-amber-500 font-bold mt-0.5">
-                          ⭐ {(Number(assignedCourier?.ratingAvg) || 5.0).toFixed(1)} Conductor Verificado
+                        {assignedCourier?.vehicleModel && (
+                          <Text className="text-[11px] text-slate-600 font-medium">
+                            {assignedCourier.vehicleModel} • {assignedCourier.vehicleColor || ''}
+                          </Text>
+                        )}
+                        <Text className="text-[10px] text-primary font-bold mt-0.5">
+                          🔍 Ver perfil y detalles
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
 
                     {assignedCourier?.phone ? (
                       <TouchableOpacity
@@ -1130,11 +1221,33 @@ export default function ClientHomeScreen() {
         isCourier={false}
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
+        onOpenProfile={() => setProfileModalVisible(true)}
         onOpenChats={() => setChatsModalVisible(true)}
         onOpenHistory={() => setHistoryVisible(true)}
         onOpenPqr={() => setPqrModalVisible(true)}
         onLogout={handleLogout}
         unreadChatsCount={unreadChatsCount}
+      />
+
+      <ProfileModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+      />
+
+      <CourierDetailModal
+        visible={courierDetailVisible}
+        courier={selectedCourierDetail}
+        onClose={() => {
+          setCourierDetailVisible(false);
+          setSelectedCourierDetail(null);
+          setSelectedBidId(null);
+          setSelectedBidPrice(undefined);
+        }}
+        isOfferSelection={Boolean(selectedBidId)}
+        bidPrice={selectedBidPrice}
+        onSelectBid={() => {
+          if (selectedBidId) handleAcceptBid(selectedBidId);
+        }}
       />
 
       <RatingModal

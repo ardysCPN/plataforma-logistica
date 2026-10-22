@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ScrollView, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { api } from '../../services/api';
 
 interface HistoryItem {
@@ -61,12 +61,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
       statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <View className="flex-1 bg-black/60 justify-end">
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
         {/* Backdrop dismiss touchable */}
-        <TouchableOpacity
-          activeOpacity={1}
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
           onPress={onClose}
-          className="flex-1"
         />
 
         <View className="bg-white rounded-t-3xl max-h-[85%] flex-col p-5 shadow-2xl z-10">

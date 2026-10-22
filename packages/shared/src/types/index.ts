@@ -61,6 +61,7 @@ export interface User {
   fullName: string;
   phone: string;
   email?: string | null;
+  avatarUrl?: string | null;
   status: UserStatus;
   ratingAvg: number;
   ratingCount: number;
@@ -84,6 +85,8 @@ export interface CourierProfile {
   userId: string;
   vehicleType: VehicleType;
   vehiclePlate?: string | null;
+  vehicleModel?: string | null;
+  vehicleColor?: string | null;
   idCardFrontUrl: string;
   idCardBackUrl: string;
   selfieUrl: string;
@@ -131,10 +134,13 @@ export interface OrderBid {
   createdAt: string;
   courier?: {
     fullName: string;
+    avatarUrl?: string | null;
     ratingAvg: number;
     ratingCount: number;
     vehicleType: VehicleType;
     vehiclePlate?: string | null;
+    vehicleModel?: string | null;
+    vehicleColor?: string | null;
   };
 }
 

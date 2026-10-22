@@ -10,11 +10,13 @@ import { ChatsModal } from '../../components/chat/ChatsModal';
 import { HistoryModal } from '../../components/common/HistoryModal';
 import { PqrModal } from '../../components/common/PqrModal';
 import { AppDrawer } from '../../components/common/AppDrawer';
+import { ProfileModal } from '../../components/common/ProfileModal';
 import { NotificationBanner, BannerNotification } from '../../components/common/NotificationBanner';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { locationTracker } from '../../services/locationTracker';
+import { notificationService } from '../../services/notificationService';
 import {
   ServiceOrder,
   SOCKET_EVENTS,
@@ -55,6 +57,7 @@ export default function CourierHomeScreen() {
   const [historyVisible, setHistoryVisible] = useState(false);
   const [pqrModalVisible, setPqrModalVisible] = useState(false);
   const [selectedPqrOrderId, setSelectedPqrOrderId] = useState<string>('');
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [activeNotification, setActiveNotification] = useState<BannerNotification | null>(null);
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
@@ -131,6 +134,17 @@ export default function CourierHomeScreen() {
 
     const handleNewOrder = (order: SocketOrderNewAvailablePayload) => {
       setAvailableOrders((prev) => [order, ...prev.filter((o) => o.orderId !== order.orderId)]);
+      notificationService.showSystemNotification({
+        title: '🔔 ¡Nuevo Servicio Solicitado!',
+        body: `Se solicita ${order.serviceType} en ${order.originAddress || 'tu zona'}. Tarifa: $${Number(order.offeredPrice || 0).toLocaleString()} COP`,
+        sound: true,
+      });
+      setActiveNotification({
+        id: `order_${Date.now()}`,
+        type: 'STATUS',
+        title: '🔔 ¡Nuevo Servicio Solicitado!',
+        message: `Se solicita ${order.serviceType} en ${order.originAddress || 'tu zona'}. Tarifa: $${Number(order.offeredPrice || 0).toLocaleString()} COP`,
+      });
     };
 
     const handleCorridorAlert = (alert: SocketCorridorAlertPayload) => {
@@ -164,12 +178,17 @@ export default function CourierHomeScreen() {
             socket.emit('order:join', payload.orderId);
             // 2. Iniciar rastreo de ubicación de inmediato
             locationTracker.startTracking([payload.orderId]);
-            // 3. Emitir notificación superior
+            // 3. Emitir notificación superior y sistema
             setActiveNotification({
               id: `assigned_${Date.now()}`,
               type: 'STATUS',
               title: '🎉 ¡Pedido Adjudicado!',
               message: 'El cliente ha aceptado tu tarifa. Dirígete al punto de recogida.',
+            });
+            notificationService.showSystemNotification({
+              title: '🎉 ¡Pedido Adjudicado!',
+              body: 'El cliente ha aceptado tu tarifa. Dirígete al punto de recogida.',
+              sound: true,
             });
           }
         } catch {
@@ -196,6 +215,11 @@ export default function CourierHomeScreen() {
             },
           });
         }
+        notificationService.showSystemNotification({
+          title: `💬 Mensaje de ${msg.senderName || 'Cliente'}`,
+          body: msg.content,
+          sound: true,
+        });
       }
     };
 
@@ -1038,6 +1062,7 @@ export default function CourierHomeScreen() {
         isCourier={true}
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
+        onOpenProfile={() => setProfileModalVisible(true)}
         onOpenChats={() => setChatsModalVisible(true)}
         onOpenHistory={() => setHistoryVisible(true)}
         onOpenDestinationMode={() => setDestModalVisible(true)}
@@ -1048,6 +1073,11 @@ export default function CourierHomeScreen() {
           router.replace('/(auth)/login');
         }}
         unreadChatsCount={unreadChatsCount}
+      />
+
+      <ProfileModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
       />
 
       <HistoryModal

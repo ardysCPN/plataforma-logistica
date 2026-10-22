@@ -14,6 +14,7 @@ export const registerClientSchema = z.object({
   fullName: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').max(120),
   phone: z.string().regex(phoneRegex, 'Número telefónico inválido'),
   email: z.string().email('Correo electrónico inválido').optional().nullable(),
+  avatarUrl: z.string().optional().nullable(),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
   termsAccepted: z.literal(true, {
     errorMap: () => ({ message: 'Debes aceptar los Términos y Condiciones y la Política de Datos' }),
@@ -26,9 +27,12 @@ export const registerCourierSchema = z.object({
   fullName: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').max(120),
   phone: z.string().regex(phoneRegex, 'Número telefónico inválido'),
   email: z.string().email('Correo electrónico inválido').optional().nullable(),
+  avatarUrl: z.string().optional().nullable(),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
   vehicleType: z.enum(['MOTO', 'CAR', 'BICYCLE']),
   vehiclePlate: z.string().max(15).optional().nullable(),
+  vehicleModel: z.string().max(60).optional().nullable(),
+  vehicleColor: z.string().max(40).optional().nullable(),
   termsAccepted: z.literal(true, {
     errorMap: () => ({ message: 'Debes aceptar los Términos y Condiciones y la Política de Datos' }),
   }),

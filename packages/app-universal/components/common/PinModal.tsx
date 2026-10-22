@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, Modal, TextInput, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
 import { Button } from './Button';
 
 interface PinModalProps {
@@ -40,12 +40,11 @@ export const PinModal: React.FC<PinModalProps> = ({
       statusBarTranslucent={true}
       onRequestClose={onCancel}
     >
-      <View className="flex-1 justify-center items-center bg-black/70 px-4">
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', padding: 16 }}>
         {/* Backdrop dismiss */}
-        <TouchableOpacity
-          activeOpacity={1}
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
           onPress={onCancel}
-          className="absolute inset-0"
         />
 
         <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl items-center z-10">

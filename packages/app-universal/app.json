@@ -3,7 +3,7 @@
     "name": "DOMY",
     "slug": "domy-app",
     "owner": "ardyscpn",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -20,11 +20,13 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "DOMY necesita tu ubicación para calcular rutas y mostrar servicios cercanos.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "DOMY necesita tu ubicación en segundo plano para rastrear tus entregas en tiempo real.",
+        "NSPhotoLibraryUsageDescription": "DOMY necesita acceder a tus fotos para que puedas seleccionar tu foto de perfil.",
+        "NSCameraUsageDescription": "DOMY necesita acceder a tu cámara para tomar tu foto de perfil.",
         "UIBackgroundModes": ["location"]
       }
     },
     "android": {
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
@@ -40,7 +42,10 @@
         "FOREGROUND_SERVICE_LOCATION",
         "POST_NOTIFICATIONS",
         "CALL_PHONE",
-        "VIBRATE"
+        "VIBRATE",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -53,6 +58,19 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Permite a la plataforma rastrear tu posición durante las entregas en segundo plano."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF6B00"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite a DOMY acceder a tus fotos para personalizar tu foto de perfil de usuario o conductor."
         }
       ]
     ]

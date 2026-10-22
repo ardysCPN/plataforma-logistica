@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, TextInput, Alert, Platform, Linking, ScrollView } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, TextInput, Alert, Platform, Linking, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { Button } from './Button';
 import { api } from '../../services/api';
 
@@ -91,12 +91,11 @@ export const PqrModal: React.FC<PqrModalProps> = ({
       statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      <View className="flex-1 bg-black/60 justify-center items-center px-4">
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: 16 }}>
         {/* Backdrop dismiss touchable */}
-        <TouchableOpacity
-          activeOpacity={1}
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
           onPress={onClose}
-          className="absolute inset-0"
         />
 
         <View className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl z-10 max-h-[90%]">

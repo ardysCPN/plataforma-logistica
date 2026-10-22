@@ -23,6 +23,7 @@ function buildNativeLeafletHtml(initial: {
   courierLocation?: { latitude: number; longitude: number; bearing?: number } | null;
   userLocation?: GeoPoint | null;
   nearbyCouriers?: NearbyCourierMarker[];
+  isSearching?: boolean;
 }) {
   const initialJson = JSON.stringify(initial);
   return `<!DOCTYPE html>
@@ -52,29 +53,80 @@ function buildNativeLeafletHtml(initial: {
       align-items: center;
       justify-content: center;
     }
-    .radar-pulse {
-      position: relative;
-      width: 18px;
-      height: 18px;
+    .user-gps-dot {
+      width: 16px;
+      height: 16px;
       background: #0284c7;
       border: 2.5px solid #ffffff;
       border-radius: 50%;
-      box-shadow: 0 0 8px rgba(2, 132, 199, 0.7);
+      box-shadow: 0 0 10px rgba(2, 132, 199, 0.8);
     }
-    .radar-pulse::after {
-      content: '';
+    .radar-container {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .radar-ring {
       position: absolute;
-      top: -8px;
-      left: -8px;
-      width: 30px;
-      height: 30px;
+      width: 140px;
+      height: 140px;
       border-radius: 50%;
-      background: rgba(2, 132, 199, 0.35);
-      animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+      pointer-events: none;
     }
-    @keyframes pulse-ring {
-      0% { transform: scale(0.5); opacity: 0.9; }
-      80%, 100% { transform: scale(2.2); opacity: 0; }
+    .radar-ring-1 {
+      border: 2.5px solid rgba(255, 107, 0, 0.85);
+      background: radial-gradient(circle, rgba(255, 107, 0, 0.28) 0%, rgba(255, 107, 0, 0) 70%);
+      animation: radar-ripple 2.4s cubic-bezier(0.2, 0.8, 0.4, 1) infinite;
+      animation-delay: 0s;
+    }
+    .radar-ring-2 {
+      border: 2px solid rgba(255, 107, 0, 0.65);
+      background: radial-gradient(circle, rgba(255, 107, 0, 0.2) 0%, rgba(255, 107, 0, 0) 70%);
+      animation: radar-ripple 2.4s cubic-bezier(0.2, 0.8, 0.4, 1) infinite;
+      animation-delay: 0.8s;
+    }
+    .radar-ring-3 {
+      border: 1.5px solid rgba(255, 107, 0, 0.45);
+      animation: radar-ripple 2.4s cubic-bezier(0.2, 0.8, 0.4, 1) infinite;
+      animation-delay: 1.6s;
+    }
+    .radar-core {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #FF6B00;
+      border: 3px solid #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: radar-pulse-core 1.2s ease-in-out infinite;
+      box-shadow: 0 4px 15px rgba(255, 107, 0, 0.7);
+      font-size: 16px;
+    }
+    @keyframes radar-ripple {
+      0% {
+        transform: scale(0.25);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+    }
+    @keyframes radar-pulse-core {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 10px rgba(255, 107, 0, 0.8);
+      }
+      50% {
+        transform: scale(1.15);
+        box-shadow: 0 0 25px rgba(255, 107, 0, 1);
+      }
     }
   </style>
 </head>
@@ -122,8 +174,23 @@ function buildNativeLeafletHtml(initial: {
           }
         };
 
+        var lastCenterLat = null;
+        var lastCenterLng = null;
+        var hasAutoCentered = false;
+
         window.updateMapData = function(data) {
           if (!map) return;
+
+          if (data.center && (lastCenterLat !== data.center.latitude || lastCenterLng !== data.center.longitude)) {
+            lastCenterLat = data.center.latitude;
+            lastCenterLng = data.center.longitude;
+            if (!data.routeCoordinates || data.routeCoordinates.length === 0) {
+              map.flyTo([data.center.latitude, data.center.longitude], initial.zoom || 15, { duration: 0.8 });
+            }
+          } else if (!hasAutoCentered && data.userLocation && (!data.routeCoordinates || data.routeCoordinates.length === 0)) {
+            hasAutoCentered = true;
+            map.flyTo([data.userLocation.latitude, data.userLocation.longitude], 15, { duration: 0.8 });
+          }
 
           var container = map.getContainer();
           if (data.darkMode) {
@@ -181,10 +248,25 @@ function buildNativeLeafletHtml(initial: {
             });
           }
 
-          if (data.userLocation) {
+          if (data.isSearching && (data.origin || data.userLocation)) {
+            var rPoint = data.origin || data.userLocation;
+            setMarker('radar_search', rPoint.latitude, rPoint.longitude,
+              '<div class="radar-container">' +
+                '<div class="radar-ring radar-ring-1"></div>' +
+                '<div class="radar-ring radar-ring-2"></div>' +
+                '<div class="radar-ring radar-ring-3"></div>' +
+                '<div class="radar-core">📡</div>' +
+              '</div>',
+              [140, 140], [70, 70]
+            );
+          } else {
+            setMarker('radar_search', null, null);
+          }
+
+          if (data.userLocation && !data.isSearching) {
             setMarker('userLocation', data.userLocation.latitude, data.userLocation.longitude,
-              '<div class="radar-pulse"></div>',
-              [18, 18], [9, 9]
+              '<div class="user-gps-dot"></div>',
+              [16, 16], [8, 8]
             );
           } else {
             setMarker('userLocation', null, null);
@@ -333,6 +415,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
       courierLocation,
       userLocation,
       nearbyCouriers,
+      isSearching,
     });
   }, []);
 
@@ -348,7 +431,9 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
       courierLocation,
       userLocation,
       nearbyCouriers,
+      isSearching,
       darkMode,
+      center,
       fitRoute: Boolean(streetRoute?.coordinates?.length || routeCoordinates?.length),
     });
 
@@ -359,6 +444,8 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
       true;
     `);
   }, [
+    center?.latitude,
+    center?.longitude,
     origin?.latitude,
     origin?.longitude,
     destination?.latitude,
@@ -369,6 +456,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     userLocation?.latitude,
     userLocation?.longitude,
     JSON.stringify(nearbyCouriers),
+    isSearching,
     streetRoute,
     routeCoordinates,
     darkMode,
