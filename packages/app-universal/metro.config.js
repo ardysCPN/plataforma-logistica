@@ -22,6 +22,8 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
+config.transformer.asyncRequireModulePath = require.resolve('metro-runtime/src/modules/asyncRequire');
+
 const nwConfig = withNativeWind(config, { input: './global.css' });
 nwConfig.transformerPath = require.resolve('./metro-transformer');
 

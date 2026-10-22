@@ -87,9 +87,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view v1.0.0-apk > /dev/null 2>&1; then
+            gh release edit v1.0.0-apk --title "DOMY Android APK (v1.0.1)" --notes "Compilación oficial de DOMY APK para Android (v1.0.1) con estilos unificados y NativeWind nativo." || true
             gh release upload v1.0.0-apk packages/app-universal/domy.apk --clobber
           else
             gh release create v1.0.0-apk packages/app-universal/domy.apk \
-              --title "DOMY Android APK (v1.0.0)" \
-              --notes "Compilación oficial de DOMY APK para Android generada mediante EAS Build."
+              --title "DOMY Android APK (v1.0.1)" \
+              --notes "Compilación oficial de DOMY APK para Android (v1.0.1) generada mediante EAS Build."
           fi

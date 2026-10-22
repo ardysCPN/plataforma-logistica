@@ -155,7 +155,8 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
 
     const initMap = async () => {
       try {
-        const maplibregl = (await import('maplibre-gl')).default;
+        const maplibreglModule = require('maplibre-gl');
+        const maplibregl = maplibreglModule.default || maplibreglModule;
 
         // Teselas OpenStreetMap 100% libres y sin necesidad de API keys
         const tiles = [
@@ -235,7 +236,8 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     if (!map || Platform.OS !== 'web') return;
 
     const renderMarkers = async () => {
-      const maplibregl = (await import('maplibre-gl')).default;
+      const maplibreglModule = require('maplibre-gl');
+      const maplibregl = maplibreglModule.default || maplibreglModule;
 
       // Helper para crear o mover marcador con suavizado continuo de posición
       const updateOrCreateMarker = (

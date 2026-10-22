@@ -90,6 +90,13 @@ export default function LoginScreen() {
         <View className="mt-4 pt-4 border-t border-slate-100">
           <PwaInstallCard variant="card" />
         </View>
+
+        {/* Indicador visual de Versión para depuración y verificación */}
+        <View className="mt-3 items-center">
+          <Text className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
+            DOMY Mobile v1.0.1 (Build Nativo Verificado)
+          </Text>
+        </View>
       </View>
     </ScrollView>
   );
