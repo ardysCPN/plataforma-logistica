@@ -8,6 +8,7 @@ describe('Auth & Legal Acceptance API Endpoints', () => {
       .send({
         fullName: 'Carlos Rodriguez',
         phone: '3001112233',
+        email: 'carlos@example.com',
         password: 'password123',
         termsAccepted: false,
       });
@@ -22,6 +23,7 @@ describe('Auth & Legal Acceptance API Endpoints', () => {
       .send({
         fullName: 'Carlos Rodriguez',
         phone: '123',
+        email: 'carlos@example.com',
         password: 'password123',
         termsAccepted: true,
       });

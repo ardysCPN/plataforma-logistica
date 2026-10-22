@@ -13,7 +13,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export const registerClientSchema = z.object({
   fullName: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').max(120),
   phone: z.string().regex(phoneRegex, 'Número telefónico inválido'),
-  email: z.string().email('Correo electrónico inválido').optional().nullable(),
+  email: z.string().min(1, 'El correo electrónico es obligatorio').email('Correo electrónico inválido'),
   avatarUrl: z.string().optional().nullable(),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
   termsAccepted: z.literal(true, {
@@ -26,7 +26,7 @@ export type RegisterClientInput = z.infer<typeof registerClientSchema>;
 export const registerCourierSchema = z.object({
   fullName: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').max(120),
   phone: z.string().regex(phoneRegex, 'Número telefónico inválido'),
-  email: z.string().email('Correo electrónico inválido').optional().nullable(),
+  email: z.string().min(1, 'El correo electrónico es obligatorio').email('Correo electrónico inválido'),
   avatarUrl: z.string().optional().nullable(),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
   vehicleType: z.enum(['MOTO', 'CAR', 'BICYCLE']),

@@ -12,13 +12,15 @@ interface UniversalBottomSheetProps {
   visible: boolean;
   onClose: () => void;
   maxHeight?: number | string;
+  height?: number | string;
   children: React.ReactNode;
 }
 
 export const UniversalBottomSheet: React.FC<UniversalBottomSheetProps> = ({
   visible,
   onClose,
-  maxHeight = '90%',
+  maxHeight = '92%',
+  height = '85%',
   children,
 }) => {
   const [shouldRender, setShouldRender] = useState(visible);
@@ -93,12 +95,15 @@ export const UniversalBottomSheet: React.FC<UniversalBottomSheetProps> = ({
         style={[
           styles.sheet,
           {
-            maxHeight: typeof maxHeight === 'number' ? maxHeight : maxHeight,
+            height: typeof height === 'number' ? height : (height as any),
+            maxHeight: typeof maxHeight === 'number' ? maxHeight : (maxHeight as any),
             transform: [{ translateY: slideAnim }],
           },
         ]}
       >
-        {children}
+        <View style={styles.sheetInner}>
+          {children}
+        </View>
       </Animated.View>
     </View>
   );
@@ -122,5 +127,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 30,
+  },
+  sheetInner: {
+    flex: 1,
+    width: '100%',
   },
 });

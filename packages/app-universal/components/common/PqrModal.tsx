@@ -85,7 +85,7 @@ export const PqrModal: React.FC<PqrModalProps> = ({
   };
 
   return (
-    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="90%">
+    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="92%" height="85%">
       <View className="p-6 flex-1">
           {/* Encabezado */}
           <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">

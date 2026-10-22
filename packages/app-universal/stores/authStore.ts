@@ -18,7 +18,14 @@ interface AuthState {
   registerCourier: (input: RegisterCourierInput) => Promise<void>;
   loadProfile: () => Promise<void>;
   updateAvatar: (avatarUrl: string) => Promise<void>;
-  updateProfile: (data: { name?: string; vehicleModel?: string; vehicleColor?: string }) => Promise<void>;
+  updateProfile: (data: {
+    fullName?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+  }) => Promise<void>;
   logout: () => void;
   clearError: () => void;
 }
@@ -133,8 +140,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (current) appStorage.setJSON('auth_user', current);
   },
 
-  updateProfile: async (data: { name?: string; vehicleModel?: string; vehicleColor?: string }) => {
-    const res = await api.put<{ user: User; profile: CourierProfile | null }>('/api/auth/profile', data);
+  updateProfile: async (data: {
+    fullName?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+  }) => {
+    const payload = {
+      ...data,
+      fullName: data.fullName || data.name,
+    };
+    const res = await api.put<{ user: User; profile: CourierProfile | null }>('/api/auth/profile', payload);
     set({ user: res.data.user, courierProfile: res.data.profile });
     appStorage.setJSON('auth_user', res.data.user);
     if (res.data.profile) {

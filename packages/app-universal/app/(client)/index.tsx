@@ -16,6 +16,8 @@ import { AppDrawer } from '../../components/common/AppDrawer';
 import { ProfileModal } from '../../components/common/ProfileModal';
 import { CourierDetailModal, CourierDetailInfo } from '../../components/common/CourierDetailModal';
 import { NotificationBanner, BannerNotification } from '../../components/common/NotificationBanner';
+import { ConfirmationDialog } from '../../components/common/ConfirmationDialog';
+import { UpdatePromptModal } from '../../components/common/UpdatePromptModal';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -24,6 +26,7 @@ import { soundNotification } from '../../services/soundNotification';
 import { notificationService } from '../../services/notificationService';
 import { routeDeviationService } from '../../services/routeDeviationService';
 import { geocodingService } from '../../services/geocodingService';
+import { versionService, VersionCheckResult } from '../../services/versionService';
 import {
   ServiceType,
   ServiceOrder,
@@ -75,6 +78,10 @@ export default function ClientHomeScreen() {
   const [selectedChatOrderId, setSelectedChatOrderId] = useState<string | null>(null);
   const [selectedChatCounterpart, setSelectedChatCounterpart] = useState('Conductor');
   const [ratingVisible, setRatingVisible] = useState(false);
+  const [ratingTargetName, setRatingTargetName] = useState('tu conductor');
+  const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
+  const [versionInfo, setVersionInfo] = useState<VersionCheckResult | null>(null);
+  const [updatePromptVisible, setUpdatePromptVisible] = useState(false);
   const [historyVisible, setHistoryVisible] = useState(false);
   const [pqrModalVisible, setPqrModalVisible] = useState(false);
   const [selectedPqrOrderId, setSelectedPqrOrderId] = useState<string>('');
@@ -164,6 +171,19 @@ export default function ClientHomeScreen() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  // Verificación de versión actualizada en el inicio
+  useEffect(() => {
+    versionService
+      .checkVersion()
+      .then((res) => {
+        if (res && res.isOutdated) {
+          setVersionInfo(res);
+          setUpdatePromptVisible(true);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Restaurar viaje activo si el cliente recarga la página o reingresa a la app
@@ -439,6 +459,7 @@ export default function ClientHomeScreen() {
       if (current) {
         setCompletedOrderId(current.id);
       }
+      setRatingTargetName(assignedCourier?.fullName || 'tu conductor');
       setRatingVisible(true);
       setActiveOrder(null);
       setCourierLocation(null);
@@ -526,41 +547,29 @@ export default function ClientHomeScreen() {
   };
 
   // 5. Cancelar Orden
+  const executeCancel = async () => {
+    if (!activeOrder) return;
+    setCancelling(true);
+    try {
+      await api.post(`/api/orders/${activeOrder.id}/cancel`);
+      if (Platform.OS === 'web') alert('Tu solicitud ha sido cancelada exitosamente.');
+      else Alert.alert('Pedido Cancelado', 'Tu solicitud ha sido cancelada exitosamente.');
+      setActiveOrder(null);
+      setIncomingBids([]);
+      setCourierLocation(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'No se pudo cancelar el pedido';
+      if (Platform.OS === 'web') alert(msg);
+      else Alert.alert('Error', msg);
+    } finally {
+      setCancelling(false);
+      setCancelConfirmVisible(false);
+    }
+  };
+
   const handleCancelOrder = async () => {
     if (!activeOrder) return;
-
-    const executeCancel = async () => {
-      setCancelling(true);
-      try {
-        await api.post(`/api/orders/${activeOrder.id}/cancel`);
-        if (Platform.OS === 'web') alert('Tu solicitud ha sido cancelada exitosamente.');
-        else Alert.alert('Pedido Cancelado', 'Tu solicitud ha sido cancelada exitosamente.');
-        setActiveOrder(null);
-        setIncomingBids([]);
-        setCourierLocation(null);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'No se pudo cancelar el pedido';
-        if (Platform.OS === 'web') alert(msg);
-        else Alert.alert('Error', msg);
-      } finally {
-        setCancelling(false);
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      if (window.confirm('¿Estás seguro de que deseas cancelar este pedido?')) {
-        await executeCancel();
-      }
-    } else {
-      Alert.alert(
-        'Confirmar Cancelación',
-        '¿Deseas cancelar esta solicitud de servicio?',
-        [
-          { text: 'No, continuar', style: 'cancel' },
-          { text: 'Sí, Cancelar', style: 'destructive', onPress: executeCancel },
-        ]
-      );
-    }
+    setCancelConfirmVisible(true);
   };
 
   // 6. Aceptar Oferta de Conductor
@@ -1256,7 +1265,7 @@ export default function ClientHomeScreen() {
 
       <RatingModal
         visible={ratingVisible}
-        targetName="tu conductor"
+        targetName={ratingTargetName}
         onSubmit={handleRateSubmit}
         onClose={() => setRatingVisible(false)}
       />
@@ -1271,6 +1280,32 @@ export default function ClientHomeScreen() {
           setHistoryVisible(false);
           setPqrModalVisible(true);
         }}
+        onRateOrder={(orderId, counterpartName) => {
+          setCompletedOrderId(orderId);
+          setRatingTargetName(counterpartName || 'tu conductor');
+          setRatingVisible(true);
+        }}
+      />
+
+      {/* Cuadro de Confirmación de Cancelación con Estilo DOMY */}
+      <ConfirmationDialog
+        visible={cancelConfirmVisible}
+        title="Cancelar Solicitud"
+        message="¿Estás seguro de que deseas cancelar este servicio? El conductor asignado será notificado."
+        confirmText="Sí, Cancelar"
+        cancelText="No, Continuar"
+        type="danger"
+        icon="🛑"
+        loading={cancelling}
+        onConfirm={executeCancel}
+        onCancel={() => setCancelConfirmVisible(false)}
+      />
+
+      {/* Modal de Aviso de Actualización de APK */}
+      <UpdatePromptModal
+        visible={updatePromptVisible}
+        versionInfo={versionInfo}
+        onClose={() => setUpdatePromptVisible(false)}
       />
 
       <PqrModal

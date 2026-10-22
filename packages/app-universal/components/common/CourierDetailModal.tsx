@@ -43,7 +43,7 @@ export const CourierDetailModal: React.FC<CourierDetailModalProps> = ({
   const vehicleLabel = courier.vehicleType === 'CAR' ? 'Carro / Automóvil' : courier.vehicleType === 'VAN' ? 'Furgoneta / Camión' : 'Motocicleta';
 
   return (
-    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="90%">
+    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="92%" height="85%">
       <View className="p-6 flex-1">
           {/* Header */}
           <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">

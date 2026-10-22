@@ -13,11 +13,13 @@ import { PqrModal } from '../../components/common/PqrModal';
 import { AppDrawer } from '../../components/common/AppDrawer';
 import { ProfileModal } from '../../components/common/ProfileModal';
 import { NotificationBanner, BannerNotification } from '../../components/common/NotificationBanner';
+import { UpdatePromptModal } from '../../components/common/UpdatePromptModal';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { locationTracker } from '../../services/locationTracker';
 import { notificationService } from '../../services/notificationService';
+import { versionService, VersionCheckResult } from '../../services/versionService';
 import {
   ServiceOrder,
   SOCKET_EVENTS,
@@ -62,6 +64,8 @@ export default function CourierHomeScreen() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [activeNotification, setActiveNotification] = useState<BannerNotification | null>(null);
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
+  const [versionInfo, setVersionInfo] = useState<VersionCheckResult | null>(null);
+  const [updatePromptVisible, setUpdatePromptVisible] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
   const [counterOfferOrderId, setCounterOfferOrderId] = useState<string | null>(null);
   const [customCounterOffer, setCustomCounterOffer] = useState<string>('');
@@ -130,6 +134,17 @@ export default function CourierHomeScreen() {
         }
       })
       .catch((err) => console.warn('No hay órdenes activas asignadas:', err));
+
+    // Verificación de actualización disponible
+    versionService
+      .checkVersion()
+      .then((res) => {
+        if (isMounted && res && res.isOutdated) {
+          setVersionInfo(res);
+          setUpdatePromptVisible(true);
+        }
+      })
+      .catch(() => {});
 
     const socket = getSocket();
 
@@ -1109,6 +1124,12 @@ export default function CourierHomeScreen() {
           setSelectedPqrOrderId('');
         }}
         onOpenHistory={() => setHistoryVisible(true)}
+      />
+
+      <UpdatePromptModal
+        visible={updatePromptVisible}
+        versionInfo={versionInfo}
+        onClose={() => setUpdatePromptVisible(false)}
       />
     </View>
   );

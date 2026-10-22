@@ -27,6 +27,7 @@ interface HistoryModalProps {
   isCourier?: boolean;
   onSelectActiveOrder?: (orderId: string) => void;
   onOpenPqr?: (orderId: string) => void;
+  onRateOrder?: (orderId: string, counterpartName: string) => void;
 }
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
@@ -35,6 +36,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   isCourier = false,
   onSelectActiveOrder,
   onOpenPqr,
+  onRateOrder,
 }) => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,7 +57,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   }, [visible]);
 
   return (
-    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="85%">
+    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="92%" height="85%">
       <View className="p-5 flex-1">
         {/* Encabezado */}
           <View className="flex-row items-center justify-between pb-4 border-b border-slate-100">
@@ -215,6 +217,21 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                       >
                         <Text className="text-white text-xs font-black">
                           🚀 Ver Viaje en Pantalla Principal
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Botón para Calificar al Conductor si ya completó y no ha sido calificado */}
+                    {!isCourier && isCompleted && !item.ratingReceived && onRateOrder && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          onClose();
+                          onRateOrder(item.id, item.counterpartName);
+                        }}
+                        className="mt-2.5 bg-amber-500 py-2.5 px-3 rounded-xl flex-row items-center justify-center gap-1.5 shadow-sm active:opacity-90"
+                      >
+                        <Text className="text-white text-xs font-black">
+                          ⭐ Calificar a {item.counterpartName}
                         </Text>
                       </TouchableOpacity>
                     )}

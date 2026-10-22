@@ -22,16 +22,23 @@ interface ProfileModalProps {
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) => {
   const { user, courierProfile, updateAvatar, updateProfile } = useAuthStore();
-  const [name, setName] = useState(user?.name || '');
+  const [fullName, setFullName] = useState(user?.fullName || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.phone || '');
   const [vehicleModel, setVehicleModel] = useState(courierProfile?.vehicleModel || '');
   const [vehicleColor, setVehicleColor] = useState(courierProfile?.vehicleColor || '');
   const [loadingAvatar, setLoadingAvatar] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const hasEmail = Boolean(user?.email && user.email.trim().length > 0);
+  const hasPhone = Boolean(user?.phone && user.phone.trim().length > 0);
+
   // Sincronizar datos al abrir
   React.useEffect(() => {
     if (visible && user) {
-      setName(user.name || '');
+      setFullName(user.fullName || '');
+      setEmail(user.email || '');
+      setPhone(user.phone || '');
       setVehicleModel(courierProfile?.vehicleModel || '');
       setVehicleColor(courierProfile?.vehicleColor || '');
     }
@@ -83,18 +90,43 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
   };
 
   const handleSaveProfile = async () => {
-    if (!name.trim()) {
-      Alert.alert('Campo requerido', 'El nombre no puede estar vacío');
+    if (!fullName.trim()) {
+      Alert.alert('Campo requerido', 'El nombre completo no puede estar vacío');
       return;
+    }
+
+    const payload: {
+      fullName: string;
+      email?: string;
+      phone?: string;
+      vehicleModel?: string;
+      vehicleColor?: string;
+    } = {
+      fullName: fullName.trim(),
+      vehicleModel: vehicleModel.trim() || undefined,
+      vehicleColor: vehicleColor.trim() || undefined,
+    };
+
+    if (!hasEmail && email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        Alert.alert('Correo inválido', 'Por favor ingresa un correo electrónico válido');
+        return;
+      }
+      payload.email = email.trim();
+    }
+
+    if (!hasPhone && phone.trim()) {
+      if (phone.trim().length < 7) {
+        Alert.alert('Teléfono inválido', 'Por favor ingresa un número de teléfono válido');
+        return;
+      }
+      payload.phone = phone.trim();
     }
 
     setSaving(true);
     try {
-      await updateProfile({
-        name: name.trim(),
-        vehicleModel: vehicleModel.trim() || undefined,
-        vehicleColor: vehicleColor.trim() || undefined,
-      });
+      await updateProfile(payload);
       if (Platform.OS === 'web') alert('Perfil guardado exitosamente.');
       else Alert.alert('Éxito', 'Perfil guardado exitosamente.');
       onClose();
@@ -110,8 +142,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
   const isCourier = user?.role === 'COURIER';
 
   return (
-    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="90%">
-      <View className="p-6">
+    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="92%" height="85%">
+      <View className="p-6 flex-1">
           {/* Header */}
           <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">
             <View>
@@ -126,7 +158,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} className="space-y-4">
+          <ScrollView showsVerticalScrollIndicator={false} className="space-y-4 flex-1">
             {/* Foto de Perfil */}
             <View className="items-center justify-center py-2">
               <View className="relative">
@@ -139,7 +171,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
                 ) : (
                   <View className="w-24 h-24 rounded-full bg-slate-800 border-4 border-primary items-center justify-center">
                     <Text className="text-3xl font-black text-white">
-                      {(user?.name || 'U').charAt(0).toUpperCase()}
+                      {(user?.fullName || 'U').charAt(0).toUpperCase()}
                     </Text>
                   </View>
                 )}
@@ -185,10 +217,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
             {/* Formulario */}
             <View className="space-y-3">
               <View>
-                <Text className="text-xs font-bold text-slate-600 mb-1">Nombre Completo</Text>
+                <Text className="text-xs font-bold text-slate-600 mb-1">Nombre Completo *</Text>
                 <TextInput
-                  value={name}
-                  onChangeText={setName}
+                  value={fullName}
+                  onChangeText={setFullName}
                   placeholder="Tu nombre completo"
                   placeholderTextColor="#94a3b8"
                   className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-800 font-medium"
@@ -196,21 +228,49 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
               </View>
 
               <View>
-                <Text className="text-xs font-bold text-slate-600 mb-1">Correo Electrónico</Text>
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-xs font-bold text-slate-600">Correo Electrónico</Text>
+                  {hasEmail && (
+                    <Text className="text-[10px] font-bold text-slate-400">🔒 Registrado</Text>
+                  )}
+                </View>
                 <TextInput
-                  value={user?.email || ''}
-                  editable={false}
-                  className="bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-500 font-medium"
+                  value={email}
+                  onChangeText={setEmail}
+                  editable={!hasEmail}
+                  placeholder={hasEmail ? '' : 'Ingresa tu correo electrónico'}
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="email-address"
+                  className={`${hasEmail ? 'bg-slate-100 text-slate-500' : 'bg-slate-50 text-slate-800'} border border-slate-200 rounded-xl px-3.5 py-2.5 font-medium`}
                 />
+                {!hasEmail && (
+                  <Text className="text-[11px] text-primary mt-1">
+                    * Puedes agregar tu correo ahora para recibir recibos y notificaciones.
+                  </Text>
+                )}
               </View>
 
               <View>
-                <Text className="text-xs font-bold text-slate-600 mb-1">Teléfono</Text>
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-xs font-bold text-slate-600">Teléfono</Text>
+                  {hasPhone && (
+                    <Text className="text-[10px] font-bold text-emerald-700">🔒 Verificado</Text>
+                  )}
+                </View>
                 <TextInput
-                  value={user?.phone || 'No registrado'}
-                  editable={false}
-                  className="bg-slate-100 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-500 font-medium"
+                  value={phone}
+                  onChangeText={setPhone}
+                  editable={!hasPhone}
+                  placeholder={hasPhone ? '' : 'Ej. 3001234567'}
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="phone-pad"
+                  className={`${hasPhone ? 'bg-slate-100 text-slate-500' : 'bg-slate-50 text-slate-800'} border border-slate-200 rounded-xl px-3.5 py-2.5 font-medium`}
                 />
+                {!hasPhone && (
+                  <Text className="text-[11px] text-primary mt-1">
+                    * Ingresa tu número de teléfono de contacto.
+                  </Text>
+                )}
               </View>
 
               {/* Datos de Conductor */}

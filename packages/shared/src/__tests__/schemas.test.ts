@@ -36,10 +36,11 @@ describe('Shared Schemas Validation Suite', () => {
       expect(result.success).toBe(false);
     });
 
-    it('debe aprobar registro con términos aceptados', () => {
+    it('debe aprobar registro con términos aceptados y correo válido', () => {
       const payload = {
         fullName: 'Juan Pérez',
         phone: '3109876543',
+        email: 'juan@example.com',
         password: 'securePass123',
         termsAccepted: true,
       };

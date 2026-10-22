@@ -53,13 +53,41 @@ function buildNativeLeafletHtml(initial: {
       align-items: center;
       justify-content: center;
     }
+    .user-gps-container {
+      position: relative;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .user-gps-pulse {
+      position: absolute;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(2, 132, 199, 0.35);
+      animation: user-gps-grow 2s ease-out infinite;
+    }
     .user-gps-dot {
+      position: relative;
       width: 16px;
       height: 16px;
       background: #0284c7;
       border: 2.5px solid #ffffff;
       border-radius: 50%;
       box-shadow: 0 0 10px rgba(2, 132, 199, 0.8);
+    }
+    @keyframes user-gps-grow {
+      0% {
+        transform: scale(0.4);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(2.2);
+        opacity: 0;
+      }
     }
     .radar-container {
       position: relative;
@@ -265,8 +293,8 @@ function buildNativeLeafletHtml(initial: {
 
           if (data.userLocation && !data.isSearching) {
             setMarker('userLocation', data.userLocation.latitude, data.userLocation.longitude,
-              '<div class="user-gps-dot"></div>',
-              [16, 16], [8, 8]
+              '<div class="user-gps-container"><div class="user-gps-pulse"></div><div class="user-gps-dot"></div></div>',
+              [32, 32], [16, 16]
             );
           } else {
             setMarker('userLocation', null, null);
@@ -305,11 +333,32 @@ function buildNativeLeafletHtml(initial: {
             });
             if (routePolyline) {
               routePolyline.setLatLngs(latLngs);
+              routePolyline.setStyle({ dashArray: null, color: '#ff6b00', weight: 5, opacity: 0.9 });
             } else {
               routePolyline = L.polyline(latLngs, {
                 color: '#ff6b00',
                 weight: 5,
                 opacity: 0.9,
+                lineJoin: 'round'
+              }).addTo(map);
+            }
+            if (data.fitRoute) {
+              map.fitBounds(routePolyline.getBounds(), { padding: [45, 45] });
+            }
+          } else if (data.origin && data.destination) {
+            var directLatLngs = [
+              [data.origin.latitude, data.origin.longitude],
+              [data.destination.latitude, data.destination.longitude]
+            ];
+            if (routePolyline) {
+              routePolyline.setLatLngs(directLatLngs);
+              routePolyline.setStyle({ dashArray: '6, 8', color: '#ff6b00', weight: 4, opacity: 0.85 });
+            } else {
+              routePolyline = L.polyline(directLatLngs, {
+                color: '#ff6b00',
+                weight: 4,
+                dashArray: '6, 8',
+                opacity: 0.85,
                 lineJoin: 'round'
               }).addTo(map);
             }
@@ -324,15 +373,32 @@ function buildNativeLeafletHtml(initial: {
 
         window.updateMapData(initial);
 
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+        function notifyReady() {
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+          } else {
+            setTimeout(notifyReady, 100);
+          }
         }
+        notifyReady();
       } catch (err) {
-        // Ignorar error interno
+        // Fallback en caso de error
       }
     }
 
-    window.onload = init;
+    function checkLeafletReady() {
+      if (typeof L !== 'undefined' && L.map) {
+        init();
+      } else {
+        setTimeout(checkLeafletReady, 60);
+      }
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      checkLeafletReady();
+    } else {
+      window.onload = checkLeafletReady;
+    }
   </script>
 </body>
 </html>`;
@@ -1061,6 +1127,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
           originWhitelist={['*']}
           source={{ html: nativeHtml }}
           onMessage={handleNativeMessage}
+          onLoadEnd={() => setNativeMapReady(true)}
           style={{ width: '100%', height: '100%', backgroundColor: darkMode ? '#0f172a' : '#f1f5f9' }}
           javaScriptEnabled={true}
           domStorageEnabled={true}

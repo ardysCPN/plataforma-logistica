@@ -1,7 +1,7 @@
 import { api } from './api';
 
-export const CURRENT_APP_VERSION = '1.0.5';
-export const CURRENT_VERSION_CODE = 6;
+export const CURRENT_APP_VERSION = '1.0.6';
+export const CURRENT_VERSION_CODE = 7;
 
 export interface AppVersionInfo {
   latestVersion: string;

@@ -18,9 +18,19 @@ export interface ClientAuditInfo {
 
 export const authService = {
   async registerClient(input: RegisterClientInput, audit: ClientAuditInfo) {
+    const email = input.email?.trim()?.toLowerCase();
+    if (!email) {
+      throw new Error('El correo electrónico es obligatorio');
+    }
+
     const existing = await db.query('SELECT id FROM users WHERE phone = $1', [input.phone]);
     if (existing.rows.length > 0) {
       throw new Error('El número telefónico ya se encuentra registrado');
+    }
+
+    const existingEmail = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existingEmail.rows.length > 0) {
+      throw new Error('El correo electrónico ya se encuentra registrado');
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);
@@ -30,7 +40,7 @@ export const authService = {
         `INSERT INTO users (role, full_name, phone, email, avatar_url, password_hash, status)
          VALUES ('CLIENT', $1, $2, $3, $4, $5, 'ACTIVE')
          RETURNING id, role, full_name as "fullName", phone, email, avatar_url as "avatarUrl", status, rating_avg as "ratingAvg", rating_count as "ratingCount", wallet_balance as "walletBalance", created_at as "createdAt", updated_at as "updatedAt"`,
-        [input.fullName, input.phone, input.email || null, input.avatarUrl || null, passwordHash]
+        [input.fullName, input.phone, email, input.avatarUrl || null, passwordHash]
       );
       const user = userRes.rows[0];
 
@@ -51,9 +61,19 @@ export const authService = {
   },
 
   async registerCourier(input: RegisterCourierInput, audit: ClientAuditInfo) {
+    const email = input.email?.trim()?.toLowerCase();
+    if (!email) {
+      throw new Error('El correo electrónico es obligatorio');
+    }
+
     const existing = await db.query('SELECT id FROM users WHERE phone = $1', [input.phone]);
     if (existing.rows.length > 0) {
       throw new Error('El número telefónico ya se encuentra registrado');
+    }
+
+    const existingEmail = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existingEmail.rows.length > 0) {
+      throw new Error('El correo electrónico ya se encuentra registrado');
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);
@@ -63,7 +83,7 @@ export const authService = {
         `INSERT INTO users (role, full_name, phone, email, avatar_url, password_hash, status)
          VALUES ('COURIER', $1, $2, $3, $4, $5, 'PENDING_APPROVAL')
          RETURNING id, role, full_name as "fullName", phone, email, avatar_url as "avatarUrl", status, rating_avg as "ratingAvg", rating_count as "ratingCount", wallet_balance as "walletBalance", created_at as "createdAt", updated_at as "updatedAt"`,
-        [input.fullName, input.phone, input.email || null, input.avatarUrl || null, passwordHash]
+        [input.fullName, input.phone, email, input.avatarUrl || null, passwordHash]
       );
       const user = userRes.rows[0];
 
@@ -170,22 +190,49 @@ export const authService = {
     userId: string,
     data: {
       fullName?: string;
+      name?: string;
       email?: string;
+      phone?: string;
       vehicleType?: any;
       vehiclePlate?: string;
       vehicleModel?: string;
       vehicleColor?: string;
     }
   ) {
+    const targetName = (data.fullName || data.name)?.trim() || null;
+    const targetEmail = data.email?.trim()?.toLowerCase() || null;
+    const targetPhone = data.phone?.trim() || null;
+
+    if (targetPhone) {
+      const existingPhone = await db.query(
+        'SELECT id FROM users WHERE phone = $1 AND id != $2',
+        [targetPhone, userId]
+      );
+      if (existingPhone.rows.length > 0) {
+        throw new Error('El número telefónico ya pertenece a otra cuenta');
+      }
+    }
+
+    if (targetEmail) {
+      const existingEmail = await db.query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [targetEmail, userId]
+      );
+      if (existingEmail.rows.length > 0) {
+        throw new Error('El correo electrónico ya pertenece a otra cuenta');
+      }
+    }
+
     const user = await db.transaction(async (client) => {
       const userRes = await client.query<User>(
         `UPDATE users
          SET full_name = COALESCE($1, full_name),
              email = COALESCE($2, email),
+             phone = COALESCE($3, phone),
              updated_at = NOW()
-         WHERE id = $3
+         WHERE id = $4
          RETURNING id, role, full_name as "fullName", phone, email, avatar_url as "avatarUrl", status, rating_avg as "ratingAvg", rating_count as "ratingCount", wallet_balance as "walletBalance", created_at as "createdAt", updated_at as "updatedAt"`,
-        [data.fullName || null, data.email || null, userId]
+        [targetName, targetEmail, targetPhone, userId]
       );
 
       if (userRes.rows.length === 0) {

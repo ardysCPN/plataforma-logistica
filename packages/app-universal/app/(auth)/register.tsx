@@ -25,8 +25,14 @@ export default function RegisterScreen() {
   const [showLegalModal, setShowLegalModal] = useState(false);
 
   const handleRegister = async () => {
-    if (!fullName || !phone || !password) {
-      Alert.alert('Campos incompletos', 'Por favor llena los campos requeridos');
+    if (!fullName || !phone || !email || !password) {
+      Alert.alert('Campos incompletos', 'Por favor llena todos los campos requeridos (*)');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert('Correo inválido', 'Por favor ingresa un correo electrónico válido');
       return;
     }
 
@@ -40,7 +46,7 @@ export default function RegisterScreen() {
         await registerClient({
           fullName,
           phone,
-          email: email || undefined,
+          email: email.trim(),
           password,
           termsAccepted: true,
         });
@@ -49,7 +55,7 @@ export default function RegisterScreen() {
         await registerCourier({
           fullName,
           phone,
-          email: email || undefined,
+          email: email.trim(),
           password,
           vehicleType,
           vehiclePlate: vehiclePlate || undefined,
@@ -139,11 +145,14 @@ export default function RegisterScreen() {
         />
 
         <Input
-          label="Correo Electrónico (Opcional)"
+          label="Correo Electrónico *"
           placeholder="ejemplo@correo.com"
           keyboardType="email-address"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(v) => {
+            setEmail(v);
+            if (error) clearError();
+          }}
         />
 
         <Input
