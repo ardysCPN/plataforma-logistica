@@ -1,6 +1,13 @@
 name: Compilar APK Android (DOMY)
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/app-universal/**'
+      - 'packages/shared/**'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
     inputs:
       profile:
