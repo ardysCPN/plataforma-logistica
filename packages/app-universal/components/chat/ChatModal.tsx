@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, Modal, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, StatusBar, BackHandler, StyleSheet } from 'react-native';
 import { Button } from '../common/Button';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -32,6 +32,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const backAction = () => {
+      onClose();
+      return true;
+    };
+
+    const handler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => handler.remove();
+  }, [visible, onClose]);
 
   useEffect(() => {
     if (!visible || !orderId) return;
@@ -87,19 +99,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     }
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      statusBarTranslucent={true}
-      onRequestClose={onClose}
-    >
-      <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ flex: 1 }}
-        >
+    <View style={styles.overlayContainer}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
           {/* Cabecera del Chat */}
           <View
             style={{
@@ -195,7 +202,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           />
         </View>
       </KeyboardAvoidingView>
-      </View>
-    </Modal>
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#f8fafc',
+    zIndex: 99995,
+    elevation: 30,
+  },
+});

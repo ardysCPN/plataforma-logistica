@@ -1,5 +1,7 @@
 import request from 'supertest';
 import { app } from '../src/app';
+import { db } from '../src/config/database';
+import * as redisConfig from '../src/config/redis';
 
 describe('Backend App & Health Check Suite', () => {
   it('debe responder 200 en la ruta raíz con metadatos del servicio', async () => {
@@ -16,8 +18,10 @@ describe('Backend App & Health Check Suite', () => {
   });
 
   it('debe responder en la ruta /health informando el estado de servicios', async () => {
+    jest.spyOn(db, 'checkConnection').mockResolvedValueOnce({ connected: false, error: 'Offline in test' });
+    jest.spyOn(redisConfig, 'checkRedisConnection').mockResolvedValueOnce({ connected: false, error: 'Offline in test' });
+
     const res = await request(app).get('/health');
-    // En entorno de pruebas sin Docker levantado responderá 503 con detalle de desconexión sin caerse el servidor
     expect([200, 503]).toContain(res.status);
     expect(res.body).toHaveProperty('status');
     expect(res.body).toHaveProperty('services');

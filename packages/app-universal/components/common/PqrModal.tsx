@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, TextInput, Alert, Platform, Linking, ScrollView, Pressable, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, Alert, Platform, Linking, ScrollView } from 'react-native';
+import { UniversalBottomSheet } from './UniversalBottomSheet';
 import { Button } from './Button';
 import { api } from '../../services/api';
 
@@ -84,21 +85,8 @@ export const PqrModal: React.FC<PqrModalProps> = ({
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      statusBarTranslucent={true}
-      onRequestClose={onClose}
-    >
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: 16 }}>
-        {/* Backdrop dismiss touchable */}
-        <Pressable
-          style={StyleSheet.absoluteFillObject}
-          onPress={onClose}
-        />
-
-        <View className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl z-10 max-h-[90%]">
+    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="90%">
+      <View className="p-6 flex-1">
           {/* Encabezado */}
           <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">
             <View>
@@ -245,8 +233,7 @@ export const PqrModal: React.FC<PqrModalProps> = ({
               </View>
             )}
           </ScrollView>
-        </View>
       </View>
-    </Modal>
+    </UniversalBottomSheet>
   );
 };

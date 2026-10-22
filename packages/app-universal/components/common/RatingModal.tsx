@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, TextInput, Pressable, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput } from 'react-native';
+import { UniversalDialog } from './UniversalDialog';
 import { Button } from './Button';
 
 interface RatingModalProps {
@@ -43,21 +44,8 @@ export const RatingModal: React.FC<RatingModalProps> = ({
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="fade"
-      transparent={true}
-      statusBarTranslucent={true}
-      onRequestClose={onClose}
-    >
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: 16 }}>
-        {/* Backdrop touchable */}
-        <Pressable
-          style={StyleSheet.absoluteFillObject}
-          onPress={onClose}
-        />
-
-        <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl items-center z-10">
+    <UniversalDialog visible={visible} onClose={onClose} maxWidth={380}>
+      <View className="items-center w-full">
           <Text className="text-xl font-bold text-slate-900 mb-1 text-center">
             Califica el Servicio
           </Text>
@@ -132,8 +120,7 @@ export const RatingModal: React.FC<RatingModalProps> = ({
               className="flex-1"
             />
           </View>
-        </View>
       </View>
-    </Modal>
+    </UniversalDialog>
   );
 };

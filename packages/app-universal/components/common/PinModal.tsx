@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, TextInput, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
+import { View, Text, TextInput } from 'react-native';
+import { UniversalDialog } from './UniversalDialog';
 import { Button } from './Button';
 
 interface PinModalProps {
@@ -33,21 +34,8 @@ export const PinModal: React.FC<PinModalProps> = ({
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="fade"
-      transparent={true}
-      statusBarTranslucent={true}
-      onRequestClose={onCancel}
-    >
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', padding: 16 }}>
-        {/* Backdrop dismiss */}
-        <Pressable
-          style={StyleSheet.absoluteFillObject}
-          onPress={onCancel}
-        />
-
-        <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl items-center z-10">
+    <UniversalDialog visible={visible} onClose={onCancel} maxWidth={380}>
+      <View className="items-center w-full">
           <View className="w-12 h-12 bg-primary/10 rounded-full items-center justify-center mb-3">
             <Text className="text-2xl">🔐</Text>
           </View>
@@ -97,8 +85,7 @@ export const PinModal: React.FC<PinModalProps> = ({
               className="flex-1"
             />
           </View>
-        </View>
       </View>
-    </Modal>
+    </UniversalDialog>
   );
 };

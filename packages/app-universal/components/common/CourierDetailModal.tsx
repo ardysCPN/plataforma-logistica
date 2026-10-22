@@ -2,13 +2,11 @@ import React from 'react';
 import {
   View,
   Text,
-  Modal,
   TouchableOpacity,
   Image,
-  Pressable,
-  StyleSheet,
   ScrollView,
 } from 'react-native';
+import { UniversalBottomSheet } from './UniversalBottomSheet';
 
 export interface CourierDetailInfo {
   courierId: string;
@@ -45,18 +43,8 @@ export const CourierDetailModal: React.FC<CourierDetailModalProps> = ({
   const vehicleLabel = courier.vehicleType === 'CAR' ? 'Carro / Automóvil' : courier.vehicleType === 'VAN' ? 'Furgoneta / Camión' : 'Motocicleta';
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      statusBarTranslucent={true}
-      onRequestClose={onClose}
-    >
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.65)' }}>
-        {/* Backdrop touchable */}
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
-
-        <View className="bg-white rounded-t-3xl max-h-[90%] p-6 shadow-2xl z-10">
+    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="90%">
+      <View className="p-6 flex-1">
           {/* Header */}
           <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">
             <View>
@@ -195,8 +183,7 @@ export const CourierDetailModal: React.FC<CourierDetailModalProps> = ({
               </View>
             )}
           </ScrollView>
-        </View>
       </View>
-    </Modal>
+    </UniversalBottomSheet>
   );
 };

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, Linking, ActivityIndicator, Modal, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, Linking, ActivityIndicator, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UniversalMap } from '../../components/map/UniversalMap';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
+import { UniversalBottomSheet } from '../../components/common/UniversalBottomSheet';
 import { PinModal } from '../../components/common/PinModal';
 import { ChatModal } from '../../components/chat/ChatModal';
 import { ChatsModal } from '../../components/chat/ChatsModal';
@@ -202,6 +203,7 @@ export default function CourierHomeScreen() {
         if (msg.id && lastChatMsgIdRef.current === msg.id) return;
         lastChatMsgIdRef.current = msg.id || null;
 
+        soundNotification.playMessageTone();
         setUnreadChatsCount((prev) => prev + 1);
         if (!chatModalVisible) {
           setActiveNotification({
@@ -219,6 +221,9 @@ export default function CourierHomeScreen() {
           title: `💬 Mensaje de ${msg.senderName || 'Cliente'}`,
           body: msg.content,
           sound: true,
+          channelType: 'MESSAGES',
+          soundType: 'MESSAGE',
+          data: { orderId: msg.orderId },
         });
       }
     };
@@ -884,21 +889,13 @@ export default function CourierHomeScreen() {
         )}
       </ScrollView>
 
-      <Modal
+      <UniversalBottomSheet
         visible={destModalVisible}
-        animationType="slide"
-        transparent={true}
-        statusBarTranslucent={true}
-        onRequestClose={() => setDestModalVisible(false)}
+        onClose={() => setDestModalVisible(false)}
+        maxHeight="85%"
       >
-        <View className="flex-1 justify-end bg-black/60">
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => setDestModalVisible(false)}
-            className="flex-1"
-          />
-          <View className={`rounded-t-3xl p-6 shadow-2xl max-h-[85%] z-10 ${darkMode ? 'bg-slate-900 border-t border-slate-800' : 'bg-white'}`}>
-            <View className="flex-row items-center justify-between mb-3">
+        <View className={`p-6 flex-1 ${darkMode ? 'bg-slate-900' : 'bg-white'}`}>
+          <View className="flex-row items-center justify-between mb-3">
               <View className="flex-row items-center gap-2">
                 <Text className="text-2xl">🎯</Text>
                 <View>
@@ -1017,9 +1014,8 @@ export default function CourierHomeScreen() {
               onPress={() => setDestModalVisible(false)}
               className="w-full py-2.5"
             />
-          </View>
         </View>
-      </Modal>
+      </UniversalBottomSheet>
 
       {/* Modales */}
       <PinModal

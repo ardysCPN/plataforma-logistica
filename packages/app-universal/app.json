@@ -3,12 +3,18 @@
     "name": "DOMY",
     "slug": "domy-app",
     "owner": "ardyscpn",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "scheme": "domy",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#FF6B00",
+      "androidMode": "default",
+      "androidCollapsedTitle": "#{unread_notifications} nuevas notificaciones"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -26,7 +32,7 @@
       }
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F172A"
@@ -63,7 +69,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#FF6B00"
         }
       ],

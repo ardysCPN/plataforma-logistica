@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  Modal,
   TouchableOpacity,
   TextInput,
   Image,
@@ -10,12 +9,11 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
-  Pressable,
-  StyleSheet,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../stores/authStore';
 import { Button } from './Button';
+import { UniversalBottomSheet } from './UniversalBottomSheet';
 
 interface ProfileModalProps {
   visible: boolean;
@@ -112,18 +110,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
   const isCourier = user?.role === 'COURIER';
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={true}
-      statusBarTranslucent={true}
-      onRequestClose={onClose}
-    >
-      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
-        {/* Backdrop touchable */}
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
-
-        <View className="bg-white rounded-t-3xl max-h-[90%] p-6 shadow-2xl z-10">
+    <UniversalBottomSheet visible={visible} onClose={onClose} maxHeight="90%">
+      <View className="p-6">
           {/* Header */}
           <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">
             <View>
@@ -285,8 +273,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
               />
             </View>
           </ScrollView>
-        </View>
       </View>
-    </Modal>
+    </UniversalBottomSheet>
   );
 };

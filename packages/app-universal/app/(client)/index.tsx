@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator, Linking, Modal, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Platform, ActivityIndicator, Linking, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UniversalMap, NearbyCourierMarker } from '../../components/map/UniversalMap';
 import { Input } from '../../components/common/Input';
 import { AddressAutocomplete } from '../../components/common/AddressAutocomplete';
 import { Button } from '../../components/common/Button';
+import { UniversalDialog } from '../../components/common/UniversalDialog';
 import { ChatModal } from '../../components/chat/ChatModal';
 import { ChatsModal } from '../../components/chat/ChatsModal';
 import { SosButton } from '../../components/common/SosButton';
@@ -376,6 +377,9 @@ export default function ClientHomeScreen() {
           title: `💬 Mensaje de ${msg.senderName || 'Conductor'}`,
           body: msg.content,
           sound: true,
+          channelType: 'MESSAGES',
+          soundType: 'MESSAGE',
+          data: { orderId: msg.orderId },
         });
       }
     };
@@ -1281,102 +1285,98 @@ export default function ClientHomeScreen() {
       />
 
       {/* Modal de Alerta de Desvío de Ruta (Seguridad y Notificación al Cliente) */}
-      <Modal
+      <UniversalDialog
         visible={deviationAlert.visible}
-        animationType="fade"
-        transparent={true}
-        statusBarTranslucent={true}
-        onRequestClose={() => setDeviationAlert((prev) => ({ ...prev, visible: false }))}
+        onClose={() => setDeviationAlert((prev) => ({ ...prev, visible: false }))}
+        maxWidth={380}
       >
-        <View className="flex-1 justify-center items-center bg-black/75 px-4">
-          <View className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border-2 border-amber-400">
-            <View className="w-16 h-16 bg-amber-100 rounded-full items-center justify-center self-center mb-3">
-              <Text className="text-3xl">⚠️</Text>
-            </View>
+        <View className="w-full">
+          <View className="w-16 h-16 bg-amber-100 rounded-full items-center justify-center self-center mb-3">
+            <Text className="text-3xl">⚠️</Text>
+          </View>
 
-            <Text className="text-xl font-black text-slate-900 text-center mb-1">
-              Alerta de Desvío de Ruta
-            </Text>
+          <Text className="text-xl font-black text-slate-900 text-center mb-1">
+            Alerta de Desvío de Ruta
+          </Text>
 
-            <Text className="text-xs text-slate-600 text-center mb-4 leading-relaxed">
-              Detectamos que el conductor se ha alejado{' '}
-              <Text className="font-extrabold text-amber-700">
-                ~{deviationAlert.distanceMeters} metros
-              </Text>{' '}
-              del trayecto oficial pactado hacia tu destino. ¿Deseas verificar la ruta, contactarlo o alertar a seguridad?
-            </Text>
+          <Text className="text-xs text-slate-600 text-center mb-4 leading-relaxed">
+            Detectamos que el conductor se ha alejado{' '}
+            <Text className="font-extrabold text-amber-700">
+              ~{deviationAlert.distanceMeters} metros
+            </Text>{' '}
+            del trayecto oficial pactado hacia tu destino. ¿Deseas verificar la ruta, contactarlo o alertar a seguridad?
+          </Text>
 
-            <View className="gap-2">
-              {assignedCourier?.phone ? (
-                <Button
-                  title="📞 Llamar al Conductor"
-                  variant="primary"
-                  onPress={() => {
-                    Linking.openURL(`tel:${assignedCourier.phone}`).catch(() => {});
-                  }}
-                  className="py-2.5"
-                />
-              ) : null}
-
+          <View className="gap-2">
+            {assignedCourier?.phone ? (
               <Button
-                title="💬 Enviar Mensaje por Chat"
+                title="📞 Llamar al Conductor"
+                variant="primary"
+                onPress={() => {
+                  Linking.openURL(`tel:${assignedCourier.phone}`).catch(() => {});
+                }}
+                className="py-2.5"
+              />
+            ) : null}
+
+            <Button
+              title="💬 Enviar Mensaje por Chat"
+              variant="outline"
+              onPress={() => {
+                setDeviationAlert((prev) => ({ ...prev, visible: false }));
+                setSelectedChatOrderId(activeOrder?.id || null);
+                setSelectedChatCounterpart(assignedCourier?.fullName || 'Conductor');
+                setChatVisible(true);
+              }}
+              className="py-2.5"
+            />
+
+            <Button
+              title="🚨 Llamar a la Policía (Línea 123)"
+              variant="danger"
+              onPress={() => {
+                Linking.openURL('tel:123').catch(() => {});
+              }}
+              className="py-2.5"
+            />
+
+            <Button
+              title="📲 Compartir Alerta SOS por WhatsApp"
+              variant="secondary"
+              onPress={() => {
+                const trackingUrl =
+                  typeof window !== 'undefined'
+                    ? `${window.location.origin}/track/${activeOrder?.id}`
+                    : `https://domy.app/track/${activeOrder?.id}`;
+                const text = encodeURIComponent(
+                  `⚠️ ¡ALERTA DE SEGURIDAD! El conductor de mi viaje DOMY se ha desviado ~${deviationAlert.distanceMeters}m de la ruta hacia el destino. Sigue mi trayecto en vivo aquí: ${trackingUrl}`
+                );
+                Linking.openURL(`https://wa.me/?text=${text}`).catch(() => {});
+              }}
+              className="py-2.5"
+            />
+
+            {activeOrder?.status === 'ACCEPTED' && (
+              <Button
+                title="❌ Cancelar Servicio (Conductor desviado)"
                 variant="outline"
                 onPress={() => {
                   setDeviationAlert((prev) => ({ ...prev, visible: false }));
-                  setSelectedChatOrderId(activeOrder?.id || null);
-                  setSelectedChatCounterpart(assignedCourier?.fullName || 'Conductor');
-                  setChatVisible(true);
+                  handleCancelOrder();
                 }}
-                className="py-2.5"
+                className="border-rose-400 text-rose-600 py-2.5"
               />
+            )}
 
-              <Button
-                title="🚨 Llamar a la Policía (Línea 123)"
-                variant="danger"
-                onPress={() => {
-                  Linking.openURL('tel:123').catch(() => {});
-                }}
-                className="py-2.5"
-              />
-
-              <Button
-                title="📲 Compartir Alerta SOS por WhatsApp"
-                variant="secondary"
-                onPress={() => {
-                  const trackingUrl =
-                    typeof window !== 'undefined'
-                      ? `${window.location.origin}/track/${activeOrder?.id}`
-                      : `https://domy.app/track/${activeOrder?.id}`;
-                  const text = encodeURIComponent(
-                    `⚠️ ¡ALERTA DE SEGURIDAD! El conductor de mi viaje DOMY se ha desviado ~${deviationAlert.distanceMeters}m de la ruta hacia el destino. Sigue mi trayecto en vivo aquí: ${trackingUrl}`
-                  );
-                  Linking.openURL(`https://wa.me/?text=${text}`).catch(() => {});
-                }}
-                className="py-2.5"
-              />
-
-              {activeOrder?.status === 'ACCEPTED' && (
-                <Button
-                  title="❌ Cancelar Servicio (Conductor desviado)"
-                  variant="outline"
-                  onPress={() => {
-                    setDeviationAlert((prev) => ({ ...prev, visible: false }));
-                    handleCancelOrder();
-                  }}
-                  className="border-rose-400 text-rose-600 py-2.5"
-                />
-              )}
-
-              <Button
-                title="Entendido (Ruta acordada)"
-                variant="outline"
-                onPress={() => setDeviationAlert((prev) => ({ ...prev, visible: false }))}
-                className="mt-1 py-2"
-              />
-            </View>
+            <Button
+              title="Entendido (Ruta acordada)"
+              variant="outline"
+              onPress={() => setDeviationAlert((prev) => ({ ...prev, visible: false }))}
+              className="mt-1 py-2"
+            />
           </View>
         </View>
-      </Modal>
+      </UniversalDialog>
     </View>
   );
 }

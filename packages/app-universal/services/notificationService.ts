@@ -5,13 +5,13 @@ let Notifications: any = null;
 if (Platform.OS !== 'web') {
   try {
     Notifications = require('expo-notifications');
-    // Configurar cómo se comportan las notificaciones cuando la app está abierta (foreground)
+    // Configurar cómo se comportan las notificaciones cuando la app está abierta o en primer plano
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
+        priority: Notifications.AndroidNotificationPriority.MAX,
       }),
     });
   } catch (err) {
@@ -24,6 +24,8 @@ export interface SystemNotificationOptions {
   body: string;
   data?: Record<string, any>;
   sound?: boolean;
+  channelType?: 'MESSAGES' | 'ALERTS';
+  soundType?: 'CHIME' | 'MESSAGE' | 'NONE';
 }
 
 export const notificationService = {
@@ -35,16 +37,35 @@ export const notificationService = {
 
     if (Platform.OS === 'android' && Notifications) {
       try {
-        await Notifications.setNotificationChannelAsync('domy_alerts', {
-          name: 'Alertas de Servicios DOMY',
+        // Canal 1: Mensajes y Conversaciones de Chat (prioridad máxima, vibración doble, visible en reloj y lockscreen)
+        await Notifications.setNotificationChannelAsync('domy_messages', {
+          name: 'Mensajes de Chat',
+          description: 'Notificaciones de mensajes de clientes y conductores en tiempo real',
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 150, 250],
           lightColor: '#FF6B00',
           sound: 'default',
           enableVibrate: true,
+          enableLights: true,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          showBadge: true,
+        });
+
+        // Canal 2: Alertas de Servicios y Estado de Viaje
+        await Notifications.setNotificationChannelAsync('domy_alerts', {
+          name: 'Alertas de Servicios DOMY',
+          description: 'Nuevos pedidos, asignaciones, llegadas de conductor y cancelaciones',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 300, 200, 300],
+          lightColor: '#FF6B00',
+          sound: 'default',
+          enableVibrate: true,
+          enableLights: true,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          showBadge: true,
         });
       } catch (err) {
-        console.warn('Error configurando canal de notificaciones Android:', err);
+        console.warn('Error configurando canales de notificaciones Android:', err);
       }
     }
 
@@ -68,16 +89,26 @@ export const notificationService = {
   /**
    * Dispara una notificación nativa en la bandeja del sistema operativo del celular
    * con sonido y vibración, y en web con Web Notifications API.
+   * Visible en pantalla de bloqueo y smartwatches.
    */
   async showSystemNotification(options: SystemNotificationOptions): Promise<void> {
     const soundEnabled = soundNotification.isSoundEnabled();
+    const isMessage = options.channelType === 'MESSAGES' || options.soundType === 'MESSAGE';
+    const channelId = isMessage ? 'domy_messages' : 'domy_alerts';
 
-    // 1. Sonido y Vibración inmediata
+    // 1. Sonido y Vibración inmediata en primer plano
     if (soundEnabled && options.sound !== false) {
-      soundNotification.playChime();
-      try {
-        Vibration.vibrate([0, 200, 100, 200]);
-      } catch {}
+      if (isMessage) {
+        soundNotification.playMessageTone();
+        try {
+          Vibration.vibrate([0, 250, 150, 250]);
+        } catch {}
+      } else {
+        soundNotification.playChime();
+        try {
+          Vibration.vibrate([0, 200, 100, 200]);
+        } catch {}
+      }
     }
 
     // 2. Notificación en Móvil (Android / iOS)
@@ -89,12 +120,12 @@ export const notificationService = {
             title: options.title,
             body: options.body,
             data: options.data || {},
-            sound: soundEnabled,
+            sound: soundEnabled ? 'default' : undefined,
             priority: Notifications.AndroidNotificationPriority.MAX,
-            vibrate: [0, 250, 150, 250],
-            channelId: 'domy_alerts',
+            vibrate: isMessage ? [0, 250, 150, 250] : [0, 300, 200, 300],
+            channelId,
           },
-          trigger: null, // null = disparo inmediato
+          trigger: null, // null = disparo inmediato en la bandeja del sistema
         });
       } catch (err) {
         console.warn('Error enviando notificación móvil nativa:', err);
@@ -106,11 +137,18 @@ export const notificationService = {
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window) {
       try {
         if (Notification.permission === 'granted') {
+          const origin = window.location.origin || '';
+          const iconUrl = `${origin}/icon-192.png`;
+          const badgeUrl = `${origin}/badge.png`;
+
           new Notification(options.title, {
             body: options.body,
-            icon: '/favicon.png',
-            badge: '/favicon.png',
-          });
+            icon: iconUrl,
+            badge: badgeUrl,
+            data: options.data || {},
+            vibrate: isMessage ? [250, 150, 250] : [300, 200, 300],
+            tag: options.data?.orderId ? `order_${options.data.orderId}` : undefined,
+          } as any);
         }
       } catch {
         // Fallback

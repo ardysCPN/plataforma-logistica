@@ -116,6 +116,32 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
     }, 120);
   };
 
+  const handleDownloadApk = () => {
+    const downloadUrl = versionResult?.apkDownloadUrl || 'https://domiapp.adhsolutions.tech/downloads/domy.apk';
+    const isOutdated = versionResult?.isOutdated;
+    const title = isOutdated ? 'Nueva Versión Disponible' : 'Descargar Instalador APK';
+    const message = isOutdated
+      ? `Hay una versión más reciente (v${versionResult?.latestVersion}). ¿Deseas descargar el instalador oficial (domy.apk) ahora?`
+      : `Versión actual instalada: v${CURRENT_APP_VERSION}.\n\n¿Deseas descargar el archivo instalador oficial (domy.apk) a tu dispositivo?`;
+
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Descargar APK',
+          style: 'default',
+          onPress: () => {
+            Linking.openURL(downloadUrl).catch((err) => {
+              Alert.alert('Error', 'No fue posible abrir el enlace de descarga: ' + (err?.message || downloadUrl));
+            });
+          },
+        },
+      ]
+    );
+  };
+
   if (!shouldRender && !visible) {
     return null;
   }
@@ -318,6 +344,24 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
                     Soporte & Reportar PQR
                   </Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => handleItemPress(handleDownloadApk)}
+                  className="flex-row items-center justify-between p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 active:bg-emerald-500/20 mt-1"
+                >
+                  <View className="flex-row items-center gap-3">
+                    <Text className="text-xl">📲</Text>
+                    <View>
+                      <Text className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
+                        Descargar / Actualizar APK
+                      </Text>
+                      <Text className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                        Instalador Android directo (.apk)
+                      </Text>
+                    </View>
+                  </View>
+                  <Text className="text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">↓</Text>
+                </TouchableOpacity>
               </View>
             </ScrollView>
 
@@ -331,28 +375,23 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
               </TouchableOpacity>
 
               {/* Indicador de Versión & Actualización */}
-              <View className="mt-3 items-center">
+              <TouchableOpacity
+                onPress={handleDownloadApk}
+                activeOpacity={0.7}
+                className="mt-3 items-center"
+              >
                 {versionResult?.isOutdated ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (versionResult.apkDownloadUrl) {
-                        Linking.openURL(versionResult.apkDownloadUrl).catch(() => {
-                          Alert.alert('Actualizar', 'Descarga la nueva versión desde domiapp.adhsolutions.tech/downloads/domy.apk');
-                        });
-                      }
-                    }}
-                    className="bg-rose-500/10 border border-rose-500/30 px-3 py-1.5 rounded-full flex-row items-center gap-1.5 active:bg-rose-500/20"
-                  >
+                  <View className="bg-rose-500/10 border border-rose-500/30 px-3 py-1.5 rounded-full flex-row items-center gap-1.5 active:bg-rose-500/20">
                     <Text className="text-xs">🔴</Text>
                     <Text className="text-[11px] font-bold text-rose-500">
                       Desactualizado • Descargar v{versionResult.latestVersion}
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                 ) : (
-                  <View className="flex-row items-center gap-1">
+                  <View className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1 rounded-full flex-row items-center gap-1.5">
                     <Text className="text-[10px] text-emerald-500 font-bold">●</Text>
-                    <Text className="text-[10px] text-slate-400 font-semibold">
-                      v{CURRENT_APP_VERSION} • Al día
+                    <Text className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                      v{CURRENT_APP_VERSION} • Toca para descargar APK
                     </Text>
                   </View>
                 )}
@@ -360,7 +399,7 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
                 <Text className="text-[10px] text-slate-400 text-center mt-1 font-semibold">
                   DOMY • Plataforma Logística
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </Animated.View>

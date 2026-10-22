@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Platform, Modal, Image } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, Image } from 'react-native';
+import { UniversalDialog } from './UniversalDialog';
 
 interface PwaInstallCardProps {
   variant?: 'card' | 'compact' | 'drawer';
 }
 
-const APK_DOWNLOAD_URL = 'https://github.com/ardysCPN/plataforma-logistica/releases/latest/download/domy.apk';
+const APK_DOWNLOAD_URL = 'https://domiapp.adhsolutions.tech/downloads/domy.apk';
 
 export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card' }) => {
   const [canInstall, setCanInstall] = useState(false);
@@ -163,21 +164,13 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
 
   function renderGuideModal() {
     return (
-      <Modal
+      <UniversalDialog
         visible={showGuideModal}
-        animationType="slide"
-        transparent={true}
-        statusBarTranslucent={true}
-        onRequestClose={() => setShowGuideModal(false)}
+        onClose={() => setShowGuideModal(false)}
+        maxWidth={460}
       >
-        <View className="flex-1 bg-black/75 justify-end sm:justify-center p-4">
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => setShowGuideModal(false)}
-            className="absolute inset-0"
-          />
-          <View className="bg-white rounded-3xl max-w-md w-full self-center p-6 shadow-2xl z-10">
-            <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">
+        <View className="w-full">
+          <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <View className="flex-row items-center gap-2">
                 <Text className="text-2xl">📲</Text>
                 <Text className="text-lg font-black text-slate-900">
@@ -269,9 +262,8 @@ export const PwaInstallCard: React.FC<PwaInstallCardProps> = ({ variant = 'card'
             >
               <Text className="text-white font-bold text-xs">Entendido</Text>
             </TouchableOpacity>
-          </View>
         </View>
-      </Modal>
+      </UniversalDialog>
     );
   }
 };
