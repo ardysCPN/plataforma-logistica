@@ -677,7 +677,7 @@ export default function ClientHomeScreen() {
       </View>
 
       {/* Mitad Inferior: Panel Interactivo */}
-      <ScrollView className="flex-1 p-5">
+      <ScrollView className="flex-1 p-5" keyboardShouldPersistTaps="handled">
         {activeOrder ? (
           // Vista de Orden Activa con Cortina
           <View className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm mb-6">

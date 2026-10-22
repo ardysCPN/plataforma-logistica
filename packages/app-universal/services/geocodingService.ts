@@ -11,6 +11,12 @@ export interface GeocodingSuggestion {
 
 const geocodeCache = new Map<string, GeocodingSuggestion[]>();
 
+const NOMINATIM_HEADERS = {
+  'Accept-Language': 'es-CO,es;q=0.9',
+  'User-Agent': 'DOMYLogisticaApp/1.0 (contacto@adhsolutions.tech)',
+};
+const NOMINATIM_EMAIL = 'contacto@adhsolutions.tech';
+
 export const geocodingService = {
   /**
    * Busca direcciones y lugares en Colombia vía Nominatim OpenStreetMap ($0 Costo)
@@ -26,23 +32,21 @@ export const geocodingService = {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 4500);
 
-      // Priorizar y restringir estrictamente al municipio local en Colombia (ej: Quibdó, Medellín, Cali, etc.)
+      // Priorizar el municipio/región local sin descartar lugares periféricos (ej. aeropuertos, veredas, Cristo Rey)
       let viewboxParam = '';
       if (nearLocation) {
-        const offset = 0.20; // Radio de ~20km para limitar al municipio/ciudad
-        viewboxParam = `&viewbox=${nearLocation.longitude - offset},${nearLocation.latitude + offset},${nearLocation.longitude + offset},${nearLocation.latitude - offset}&bounded=1`;
+        const offset = 0.35; // Perímetro ~35km para priorizar cercanía geográfica sin ser excluyente
+        viewboxParam = `&viewbox=${nearLocation.longitude - offset},${nearLocation.latitude + offset},${nearLocation.longitude + offset},${nearLocation.latitude - offset}`;
       }
 
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
         trimmed
-      )}&countrycodes=co&limit=8&addressdetails=1${viewboxParam}`;
+      )}&countrycodes=co&limit=10&addressdetails=1${viewboxParam}&email=${NOMINATIM_EMAIL}`;
 
       const response = await fetch(url, {
-        headers: {
-          'Accept-Language': 'es-CO,es;q=0.9',
-        },
+        headers: NOMINATIM_HEADERS,
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -50,14 +54,14 @@ export const geocodingService = {
       if (response.ok) {
         let data = (await response.json()) as any[];
 
-        // Si con límite estricto municipal (20km) no hubo coincidencias, ampliar a perímetro subregional (35km) con bounded=1
+        // Si con sesgo geográfico no hubo resultados, intentar búsqueda nacional en Colombia
         if (data.length === 0 && nearLocation) {
           const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
             trimmed
-          )}&countrycodes=co&limit=8&addressdetails=1&viewbox=${nearLocation.longitude - 0.35},${nearLocation.latitude + 0.35},${nearLocation.longitude + 0.35},${nearLocation.latitude - 0.35}&bounded=1`;
+          )}&countrycodes=co&limit=8&addressdetails=1&email=${NOMINATIM_EMAIL}`;
           try {
             const fallbackRes = await fetch(fallbackUrl, {
-              headers: { 'Accept-Language': 'es-CO,es;q=0.9' },
+              headers: NOMINATIM_HEADERS,
             });
             if (fallbackRes.ok) {
               data = (await fallbackRes.json()) as any[];
@@ -111,11 +115,11 @@ export const geocodingService = {
   async reverseGeocode(point: GeoPoint): Promise<string> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${point.latitude}&lon=${point.longitude}&addressdetails=1`;
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${point.latitude}&lon=${point.longitude}&addressdetails=1&email=${NOMINATIM_EMAIL}`;
       const response = await fetch(url, {
-        headers: { 'Accept-Language': 'es-CO,es;q=0.9' },
+        headers: NOMINATIM_HEADERS,
         signal: controller.signal,
       });
       clearTimeout(timeoutId);

@@ -1,7 +1,260 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { View, Platform, Text, TouchableOpacity, Linking } from 'react-native';
 import { GeoPoint } from '@plataforma/shared';
 import { routingService, StreetRouteResult } from '../../services/routingService';
+
+let NativeWebView: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    NativeWebView = require('react-native-webview').WebView;
+  } catch (err) {
+    console.warn('No se pudo cargar react-native-webview:', err);
+  }
+}
+
+function buildNativeLeafletHtml(initial: {
+  center: GeoPoint;
+  zoom: number;
+  darkMode: boolean;
+  origin?: GeoPoint | null;
+  destination?: GeoPoint | null;
+  intermediateStops?: GeoPoint[];
+  routeCoordinates?: [number, number][];
+  courierLocation?: { latitude: number; longitude: number; bearing?: number } | null;
+  userLocation?: GeoPoint | null;
+  nearbyCouriers?: NearbyCourierMarker[];
+}) {
+  const initialJson = JSON.stringify(initial);
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #map {
+      width: 100%;
+      height: 100%;
+      background: #f1f5f9;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .leaflet-control-zoom, .leaflet-control-attribution {
+      display: none !important;
+    }
+    .dark-mode-tiles .leaflet-tile {
+      filter: invert(90%) hue-rotate(180deg) brightness(85%) contrast(115%) !important;
+    }
+    .custom-pin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .radar-pulse {
+      position: relative;
+      width: 18px;
+      height: 18px;
+      background: #0284c7;
+      border: 2.5px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(2, 132, 199, 0.7);
+    }
+    .radar-pulse::after {
+      content: '';
+      position: absolute;
+      top: -8px;
+      left: -8px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: rgba(2, 132, 199, 0.35);
+      animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.5); opacity: 0.9; }
+      80%, 100% { transform: scale(2.2); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map;
+    var markers = {};
+    var routePolyline = null;
+
+    function init() {
+      try {
+        var initial = ${initialJson};
+        map = L.map('map', {
+          zoomControl: false,
+          attributionControl: false
+        }).setView([initial.center.latitude, initial.center.longitude], initial.zoom || 14);
+
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19
+        }).addTo(map);
+
+        if (initial.darkMode) {
+          map.getContainer().classList.add('dark-mode-tiles');
+        }
+
+        map.on('click', function(e) {
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'MAP_CLICK',
+              latitude: e.latlng.lat,
+              longitude: e.latlng.lng
+            }));
+          }
+        });
+
+        window.recenterMap = function(lat, lng) {
+          if (map) map.flyTo([lat, lng], 15, { duration: 0.7 });
+        };
+
+        window.zoomMap = function(delta) {
+          if (map) {
+            if (delta > 0) map.zoomIn();
+            else map.zoomOut();
+          }
+        };
+
+        window.updateMapData = function(data) {
+          if (!map) return;
+
+          var container = map.getContainer();
+          if (data.darkMode) {
+            container.classList.add('dark-mode-tiles');
+          } else {
+            container.classList.remove('dark-mode-tiles');
+          }
+
+          function setMarker(key, lat, lng, html, iconSize, anchor) {
+            if (!lat || !lng) {
+              if (markers[key]) {
+                map.removeLayer(markers[key]);
+                delete markers[key];
+              }
+              return;
+            }
+            var icon = L.divIcon({
+              className: 'custom-pin',
+              html: html,
+              iconSize: iconSize || [32, 32],
+              iconAnchor: anchor || [16, 16]
+            });
+            if (markers[key]) {
+              markers[key].setLatLng([lat, lng]);
+              markers[key].setIcon(icon);
+            } else {
+              markers[key] = L.marker([lat, lng], { icon: icon }).addTo(map);
+            }
+          }
+
+          if (data.origin) {
+            setMarker('origin', data.origin.latitude, data.origin.longitude,
+              '<div style="background:#10b981;color:white;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 3px 8px rgba(0,0,0,0.3);border:2px solid white;">📍</div>',
+              [32, 32], [16, 32]
+            );
+          } else {
+            setMarker('origin', null, null);
+          }
+
+          if (data.destination) {
+            setMarker('destination', data.destination.latitude, data.destination.longitude,
+              '<div style="background:#ef4444;color:white;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 3px 8px rgba(0,0,0,0.3);border:2px solid white;">🏁</div>',
+              [32, 32], [16, 32]
+            );
+          } else {
+            setMarker('destination', null, null);
+          }
+
+          if (data.intermediateStops && data.intermediateStops.length > 0) {
+            data.intermediateStops.forEach(function(stop, idx) {
+              setMarker('stop_' + idx, stop.latitude, stop.longitude,
+                '<div style="background:#f59e0b;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid white;">' + (idx + 1) + '</div>',
+                [28, 28], [14, 28]
+              );
+            });
+          }
+
+          if (data.userLocation) {
+            setMarker('userLocation', data.userLocation.latitude, data.userLocation.longitude,
+              '<div class="radar-pulse"></div>',
+              [18, 18], [9, 9]
+            );
+          } else {
+            setMarker('userLocation', null, null);
+          }
+
+          if (data.courierLocation) {
+            setMarker('courier', data.courierLocation.latitude, data.courierLocation.longitude,
+              '<div style="background:#ff6b00;color:white;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 12px rgba(255,107,0,0.5);border:2px solid white;">🛵</div>',
+              [36, 36], [18, 18]
+            );
+          } else {
+            setMarker('courier', null, null);
+          }
+
+          var activeKeys = {};
+          if (data.nearbyCouriers && data.nearbyCouriers.length > 0) {
+            data.nearbyCouriers.forEach(function(c) {
+              var k = 'nearby_' + c.id;
+              activeKeys[k] = true;
+              setMarker(k, c.latitude, c.longitude,
+                '<div style="background:#1e293b;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:1.5px solid #ff6b00;">🛵</div>',
+                [28, 28], [14, 14]
+              );
+            });
+          }
+          Object.keys(markers).forEach(function(k) {
+            if (k.startsWith('nearby_') && !activeKeys[k]) {
+              map.removeLayer(markers[k]);
+              delete markers[k];
+            }
+          });
+
+          if (data.routeCoordinates && data.routeCoordinates.length > 1) {
+            var latLngs = data.routeCoordinates.map(function(pt) {
+              return [pt[1], pt[0]];
+            });
+            if (routePolyline) {
+              routePolyline.setLatLngs(latLngs);
+            } else {
+              routePolyline = L.polyline(latLngs, {
+                color: '#ff6b00',
+                weight: 5,
+                opacity: 0.9,
+                lineJoin: 'round'
+              }).addTo(map);
+            }
+            if (data.fitRoute) {
+              map.fitBounds(routePolyline.getBounds(), { padding: [45, 45] });
+            }
+          } else if (routePolyline) {
+            map.removeLayer(routePolyline);
+            routePolyline = null;
+          }
+        };
+
+        window.updateMapData(initial);
+
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+        }
+      } catch (err) {
+        // Ignorar error interno
+      }
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>`;
+}
 
 export interface NearbyCourierMarker {
 
@@ -59,10 +312,81 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
+  const nativeWebViewRef = useRef<any>(null);
+  const [nativeMapReady, setNativeMapReady] = useState(false);
   const markersRef = useRef<{ [key: string]: any }>({});
   const lastFittedRouteRef = useRef<string>('');
   const [mapLoaded, setMapLoaded] = useState(false);
   const [streetRoute, setStreetRoute] = useState<StreetRouteResult | null>(null);
+
+  // HTML inicial memoizado para carga inmediata en dispositivos móviles
+  const nativeHtml = useMemo(() => {
+    if (Platform.OS === 'web') return '';
+    return buildNativeLeafletHtml({
+      center,
+      zoom,
+      darkMode,
+      origin,
+      destination,
+      intermediateStops,
+      routeCoordinates: streetRoute?.coordinates || routeCoordinates,
+      courierLocation,
+      userLocation,
+      nearbyCouriers,
+    });
+  }, []);
+
+  // Sincronizar datos reactivos con el mapa nativo en tiempo real
+  useEffect(() => {
+    if (Platform.OS === 'web' || !nativeWebViewRef.current || !nativeMapReady) return;
+
+    const payload = JSON.stringify({
+      origin,
+      destination,
+      intermediateStops,
+      routeCoordinates: streetRoute?.coordinates || routeCoordinates,
+      courierLocation,
+      userLocation,
+      nearbyCouriers,
+      darkMode,
+      fitRoute: Boolean(streetRoute?.coordinates?.length || routeCoordinates?.length),
+    });
+
+    nativeWebViewRef.current.injectJavaScript(`
+      if (window.updateMapData) {
+        window.updateMapData(${payload});
+      }
+      true;
+    `);
+  }, [
+    origin?.latitude,
+    origin?.longitude,
+    destination?.latitude,
+    destination?.longitude,
+    JSON.stringify(intermediateStops),
+    courierLocation?.latitude,
+    courierLocation?.longitude,
+    userLocation?.latitude,
+    userLocation?.longitude,
+    JSON.stringify(nearbyCouriers),
+    streetRoute,
+    routeCoordinates,
+    darkMode,
+    nativeMapReady,
+  ]);
+
+  const handleNativeMessage = (event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'MAP_READY') {
+        setNativeMapReady(true);
+      } else if (data.type === 'MAP_CLICK') {
+        onMapClick?.({ latitude: data.latitude, longitude: data.longitude });
+      }
+    } catch {
+      // Ignorar mensajes no válidos
+    }
+  };
 
   // Obtener ruta real por calles mediante OSRM (soporta paradas intermedias múltiples)
   useEffect(() => {
@@ -572,24 +896,43 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
 
   // Controles flotantes
   const handleRecenter = () => {
-    if (mapInstanceRef.current && userLocation) {
-      mapInstanceRef.current.flyTo({
-        center: [userLocation.longitude, userLocation.latitude],
-        zoom: 15,
-        essential: true,
-      });
-    } else if (mapInstanceRef.current && center) {
-      mapInstanceRef.current.flyTo({
-        center: [center.longitude, center.latitude],
-        zoom: 15,
-        essential: true,
-      });
+    if (Platform.OS === 'web') {
+      if (mapInstanceRef.current && userLocation) {
+        mapInstanceRef.current.flyTo({
+          center: [userLocation.longitude, userLocation.latitude],
+          zoom: 15,
+          essential: true,
+        });
+      } else if (mapInstanceRef.current && center) {
+        mapInstanceRef.current.flyTo({
+          center: [center.longitude, center.latitude],
+          zoom: 15,
+          essential: true,
+        });
+      }
+    } else {
+      const target = userLocation || center;
+      nativeWebViewRef.current?.injectJavaScript(`
+        if (window.recenterMap) {
+          window.recenterMap(${target.latitude}, ${target.longitude});
+        }
+        true;
+      `);
     }
   };
 
   const handleZoom = (delta: number) => {
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.zoomTo(mapInstanceRef.current.getZoom() + delta);
+    if (Platform.OS === 'web') {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.zoomTo(mapInstanceRef.current.getZoom() + delta);
+      }
+    } else {
+      nativeWebViewRef.current?.injectJavaScript(`
+        if (window.zoomMap) {
+          window.zoomMap(${delta});
+        }
+        true;
+      `);
     }
   };
 
@@ -615,7 +958,6 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     }
   };
 
-
   return (
     <View className={`w-full h-full relative overflow-hidden bg-slate-100 ${className}`}>
       {Platform.OS === 'web' ? (
@@ -625,10 +967,23 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
           className={darkMode ? 'dark-map-mode' : ''}
           style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
         />
+      ) : NativeWebView ? (
+        <NativeWebView
+          ref={nativeWebViewRef}
+          originWhitelist={['*']}
+          source={{ html: nativeHtml }}
+          onMessage={handleNativeMessage}
+          style={{ width: '100%', height: '100%', backgroundColor: darkMode ? '#0f172a' : '#f1f5f9' }}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          scalesPageToFit={false}
+          scrollEnabled={false}
+          bounces={false}
+        />
       ) : (
         <View className="flex-1 items-center justify-center p-4">
           <Text className="text-slate-500 font-medium text-center">
-            [Mapa Nativo OpenStreetMap]
+            Cargando OpenStreetMap...
           </Text>
         </View>
       )}

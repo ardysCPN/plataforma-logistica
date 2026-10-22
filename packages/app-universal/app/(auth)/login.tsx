@@ -94,7 +94,7 @@ export default function LoginScreen() {
         {/* Indicador visual de Versión para depuración y verificación */}
         <View className="mt-3 items-center">
           <Text className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-            DOMY Mobile v1.0.1 (Build Nativo Verificado)
+            DOMY Mobile v1.0.2 (OpenStreetMap & Menú Reparados)
           </Text>
         </View>
       </View>

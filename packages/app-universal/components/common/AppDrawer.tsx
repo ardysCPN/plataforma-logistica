@@ -1,6 +1,15 @@
-import React from 'react';
-import { View, Text, Modal, TouchableOpacity, ScrollView, Platform } from 'react-native';
-import { PwaInstallCard } from './PwaInstallCard';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Animated,
+  Dimensions,
+  StyleSheet,
+  BackHandler,
+  Platform,
+} from 'react-native';
 
 interface AppDrawerProps {
   visible: boolean;
@@ -33,12 +42,95 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
   onLogout,
   unreadChatsCount = 0,
 }) => {
+  const [shouldRender, setShouldRender] = useState(visible);
+  const screenWidth = Dimensions.get('window').width;
+  const drawerWidth = Math.min(screenWidth * 0.82, 340);
+
+  const slideAnim = useRef(new Animated.Value(-drawerWidth)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 260,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 260,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else if (shouldRender) {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -drawerWidth,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setShouldRender(false);
+      });
+    }
+  }, [visible, drawerWidth]);
+
+  // Manejo de botón 'Atrás' de Android para cerrar el drawer de forma natural
+  useEffect(() => {
+    if (!visible) return;
+
+    const backAction = () => {
+      onClose();
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [visible, onClose]);
+
+  if (!shouldRender && !visible) {
+    return null;
+  }
+
   return (
-    <Modal visible={visible} animationType="fade" transparent={true} onRequestClose={onClose}>
-      <View className="flex-1 flex-row bg-black/60">
-        {/* Panel Lateral Drawer (Izquierda) */}
-        <View className="w-[82%] max-w-[340px] h-full bg-white dark:bg-slate-900 shadow-2xl flex-col justify-between">
-          <ScrollView className="flex-1">
+    <View style={styles.overlayContainer} pointerEvents={visible ? 'auto' : 'none'}>
+      {/* Fondo oscuro traslúcido con toque para cerrar */}
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            opacity: fadeAnim,
+          },
+        ]}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={onClose}
+          style={StyleSheet.absoluteFillObject}
+          accessibilityLabel="Cerrar menú"
+        />
+      </Animated.View>
+
+      {/* Panel Lateral Animado (Deslizamiento desde la izquierda) */}
+      <Animated.View
+        style={[
+          styles.drawerPanel,
+          {
+            width: drawerWidth,
+            transform: [{ translateX: slideAnim }],
+          },
+        ]}
+      >
+        <View className="flex-1 bg-white dark:bg-slate-900 shadow-2xl flex-col">
+          <ScrollView className="flex-1" bounces={false} showsVerticalScrollIndicator={false}>
             {/* Encabezado del Perfil */}
             <View className="bg-secondary p-6 pt-12 pb-6">
               <View className="flex-row items-center justify-between mb-4">
@@ -160,7 +252,11 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
                     {darkMode ? 'Modo Día' : 'Modo Nocturno'}
                   </Text>
                 </View>
-                <View className={`px-2.5 py-1 rounded-full border ${darkMode ? 'bg-amber-400/20 border-amber-400' : 'bg-slate-100 border-slate-300'}`}>
+                <View
+                  className={`px-2.5 py-1 rounded-full border ${
+                    darkMode ? 'bg-amber-400/20 border-amber-400' : 'bg-slate-100 border-slate-300'
+                  }`}
+                >
                   <Text className="text-[11px] font-bold text-slate-700 dark:text-amber-300">
                     {darkMode ? 'ON' : 'OFF'}
                   </Text>
@@ -183,9 +279,7 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
           </ScrollView>
 
           {/* Botón Salir en Footer */}
-          <View className="p-5 border-t border-slate-100 dark:border-slate-800 space-y-3">
-            <PwaInstallCard variant="drawer" />
-
+          <View className="p-5 border-t border-slate-100 dark:border-slate-800">
             <TouchableOpacity
               onPress={() => {
                 onClose();
@@ -197,14 +291,27 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
             </TouchableOpacity>
 
             <Text className="text-[10px] text-slate-400 text-center mt-3">
-              DomyApp • Plataforma Logística v1.2
+              DOMY • Plataforma Logística v1.0.2
             </Text>
           </View>
         </View>
-
-        {/* Cierre al tocar el fondo oscuro */}
-        <TouchableOpacity activeOpacity={1} onPress={onClose} className="flex-1" />
-      </View>
-    </Modal>
+      </Animated.View>
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 99999,
+    elevation: 30,
+  },
+  drawerPanel: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 100000,
+    elevation: 35,
+  },
+});
