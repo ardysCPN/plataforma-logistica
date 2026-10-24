@@ -25,6 +25,7 @@ interface AppDrawerProps {
   onOpenChats: () => void;
   onOpenHistory: () => void;
   onOpenDestinationMode?: () => void;
+  onOpenDailyEarnings?: () => void;
   onOpenPqr: () => void;
   onOpenWallet?: () => void;
   onLogout: () => void;
@@ -42,6 +43,7 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
   onOpenChats,
   onOpenHistory,
   onOpenDestinationMode,
+  onOpenDailyEarnings,
   onOpenPqr,
   onOpenWallet,
   onLogout,
@@ -301,6 +303,23 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
                     Historial de Viajes
                   </Text>
                 </TouchableOpacity>
+
+                {isCourier && onOpenDailyEarnings && (
+                  <TouchableOpacity
+                    onPress={() => handleItemPress(onOpenDailyEarnings)}
+                    className="flex-row items-center gap-3 p-3.5 rounded-2xl active:bg-slate-100 dark:active:bg-slate-800 bg-emerald-500/10 border border-emerald-500/20"
+                  >
+                    <Text className="text-xl">📊</Text>
+                    <View className="flex-1">
+                      <Text className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
+                        Cuadre de Caja & Ganancias
+                      </Text>
+                      <Text className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        Consolidado por día, semana y mes
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
 
                 {isCourier && onOpenDestinationMode && (
                   <TouchableOpacity

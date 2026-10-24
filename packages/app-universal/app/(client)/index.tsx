@@ -314,17 +314,28 @@ export default function ClientHomeScreen() {
     const socket = getSocket();
 
     const handleBidReceived = (bid: SocketBidReceivedPayload) => {
-      setIncomingBids((prev) => [bid, ...prev.filter((b) => b.courierId !== bid.courierId)]);
-      setActiveNotification({
-        id: `bid_${Date.now()}`,
-        type: 'BID',
-        title: '💰 ¡Nueva Oferta de Conductor!',
-        message: `${bid.courierName} ofrece $${Number(bid.bidAmount || 0).toLocaleString()} COP (⭐ ${(Number(bid.courierRating) || 5.0).toFixed(1)})`,
-      });
-      notificationService.showSystemNotification({
-        title: '💰 ¡Nueva Oferta de Conductor!',
-        body: `${bid.courierName} ofrece $${Number(bid.bidAmount || 0).toLocaleString()} COP`,
-        sound: true,
+      setIncomingBids((prev) => {
+        const next = [bid, ...prev.filter((b) => b.courierId !== bid.courierId)];
+        const count = next.length;
+        const title = count > 1 ? `💰 ¡Tienes ${count} ofertas de conductores!` : '💰 ¡Nueva Oferta de Conductor!';
+        const message = count > 1
+          ? `Última: ${bid.courierName} ofrece $${Number(bid.bidAmount || 0).toLocaleString()} COP`
+          : `${bid.courierName} ofrece $${Number(bid.bidAmount || 0).toLocaleString()} COP (⭐ ${(Number(bid.courierRating) || 5.0).toFixed(1)})`;
+
+        setActiveNotification({
+          id: `bid_active`,
+          type: 'BID',
+          title,
+          message,
+        });
+
+        notificationService.showSystemNotification({
+          title,
+          body: message,
+          sound: true,
+        });
+
+        return next;
       });
     };
 
@@ -363,7 +374,7 @@ export default function ClientHomeScreen() {
         else if (data.newStatus === 'IN_TRANSIT') statusText = '🚀 El conductor va en camino hacia la entrega final.';
 
         setActiveNotification({
-          id: `status_${Date.now()}`,
+          id: `status_${data.newStatus}`,
           type: 'STATUS',
           title: '🛵 Actualización del Viaje',
           message: statusText,
@@ -464,23 +475,42 @@ export default function ClientHomeScreen() {
       setActiveOrder(null);
       setCourierLocation(null);
       setAssignedCourier(null);
+      setIncomingBids([]);
+
+      // Limpiar mapa y trazabilidad por completo: dejar solo ubicación GPS
+      setDestPoint(null);
+      setDestAddress('');
+      setActiveRouteCoords([]);
+      setIntermediateStops([]);
+
       setActiveNotification({
         id: `completed_${Date.now()}`,
         type: 'STATUS',
         title: '🏁 ¡Servicio Completado!',
-        message: 'Tu pedido ha llegado a su destino. ¡Gracias por usar la plataforma!',
+        message: 'Tu pedido ha llegado a su destino. ¡Gracias por usar DOMY!',
       });
     };
 
     const handleCancelled = (payload: { orderId: string }) => {
       const current = activeOrderRef.current;
       if (current && current.id === payload.orderId) {
-        if (Platform.OS === 'web') alert('La orden fue cancelada.');
-        else Alert.alert('Aviso', 'La orden fue cancelada.');
         setActiveOrder(null);
         setIncomingBids([]);
         setCourierLocation(null);
         setAssignedCourier(null);
+
+        // Limpiar mapa y ruta
+        setDestPoint(null);
+        setDestAddress('');
+        setActiveRouteCoords([]);
+        setIntermediateStops([]);
+
+        setActiveNotification({
+          id: `cancelled_${Date.now()}`,
+          type: 'STATUS',
+          title: '⚠️ Solicitud Cancelada',
+          message: 'Tu servicio ha sido cancelado.',
+        });
       }
     };
 
@@ -552,11 +582,20 @@ export default function ClientHomeScreen() {
     setCancelling(true);
     try {
       await api.post(`/api/orders/${activeOrder.id}/cancel`);
-      if (Platform.OS === 'web') alert('Tu solicitud ha sido cancelada exitosamente.');
-      else Alert.alert('Pedido Cancelado', 'Tu solicitud ha sido cancelada exitosamente.');
       setActiveOrder(null);
       setIncomingBids([]);
       setCourierLocation(null);
+      setAssignedCourier(null);
+      setDestPoint(null);
+      setDestAddress('');
+      setActiveRouteCoords([]);
+      setIntermediateStops([]);
+      setActiveNotification({
+        id: `cancelled_client_${Date.now()}`,
+        type: 'STATUS',
+        title: 'Pedido Cancelado',
+        message: 'Tu solicitud ha sido cancelada exitosamente.',
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'No se pudo cancelar el pedido';
       if (Platform.OS === 'web') alert(msg);

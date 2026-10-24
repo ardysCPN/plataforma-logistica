@@ -13,6 +13,7 @@ export const SOCKET_EVENTS = {
   ORDER_STATUS_CHANGE: 'order:status_change',
   ORDER_COMPLETED: 'order:completed',
   ORDER_CANCELLED: 'order:cancelled',
+  ORDER_TAKEN: 'order:taken',
 
   // Subasta y Ofertas
   BID_SUBMIT: 'bid:submit',
@@ -144,3 +145,10 @@ export interface SocketOrderStatusChangePayload {
   updatedAt: string;
   details?: Record<string, unknown>;
 }
+
+export interface SocketOrderTakenPayload {
+  orderId: string;
+  courierId?: string;
+  message?: string;
+}
+

@@ -17,19 +17,50 @@ const getSocketUrl = () => {
 };
 
 let socketInstance: Socket | null = null;
+const joinedOrderRooms = new Set<string>();
 
 export const getSocket = (token?: string | null): Socket => {
   if (!socketInstance) {
     socketInstance = io(getSocketUrl(), {
       autoConnect: false,
       auth: token ? { token } : undefined,
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+    });
+
+    socketInstance.on('connect', () => {
+      // Re-unir automáticamente a todas las salas de órdenes activas tras reconexión
+      joinedOrderRooms.forEach((orderId) => {
+        socketInstance?.emit('order:join', orderId);
+      });
     });
   } else if (token) {
     socketInstance.auth = { token };
   }
 
   return socketInstance;
+};
+
+export const joinOrderRoom = (orderId: string) => {
+  if (!orderId) return;
+  joinedOrderRooms.add(orderId);
+  const socket = getSocket();
+  if (socket.connected) {
+    socket.emit('order:join', orderId);
+  }
+};
+
+export const leaveOrderRoom = (orderId: string) => {
+  if (!orderId) return;
+  joinedOrderRooms.delete(orderId);
+  const socket = getSocket();
+  if (socket.connected) {
+    socket.emit('order:leave', orderId);
+  }
 };
 
 export const connectSocket = (token: string) => {
@@ -45,4 +76,5 @@ export const disconnectSocket = () => {
     socketInstance.disconnect();
     socketInstance = null;
   }
+  joinedOrderRooms.clear();
 };

@@ -28,6 +28,8 @@ export interface SystemNotificationOptions {
   soundType?: 'CHIME' | 'MESSAGE' | 'NONE';
 }
 
+let lastNotificationSoundTime = 0;
+
 export const notificationService = {
   initialized: false,
 
@@ -95,9 +97,12 @@ export const notificationService = {
     const soundEnabled = soundNotification.isSoundEnabled();
     const isMessage = options.channelType === 'MESSAGES' || options.soundType === 'MESSAGE';
     const channelId = isMessage ? 'domy_messages' : 'domy_alerts';
+    const now = Date.now();
 
-    // 1. Sonido y Vibración inmediata en primer plano
-    if (soundEnabled && options.sound !== false) {
+    // 1. Sonido y Vibración con debouncing para evitar saturación cuando llegan muchas ofertas juntas
+    const canPlaySound = now - lastNotificationSoundTime > 900;
+    if (soundEnabled && options.sound !== false && canPlaySound) {
+      lastNotificationSoundTime = now;
       if (isMessage) {
         soundNotification.playMessageTone();
         try {

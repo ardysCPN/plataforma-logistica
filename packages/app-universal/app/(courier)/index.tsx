@@ -14,6 +14,7 @@ import { AppDrawer } from '../../components/common/AppDrawer';
 import { ProfileModal } from '../../components/common/ProfileModal';
 import { NotificationBanner, BannerNotification } from '../../components/common/NotificationBanner';
 import { UpdatePromptModal } from '../../components/common/UpdatePromptModal';
+import { DailyEarningsModal } from '../../components/courier/DailyEarningsModal';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
@@ -66,6 +67,7 @@ export default function CourierHomeScreen() {
   const [unreadChatsCount, setUnreadChatsCount] = useState(0);
   const [versionInfo, setVersionInfo] = useState<VersionCheckResult | null>(null);
   const [updatePromptVisible, setUpdatePromptVisible] = useState(false);
+  const [earningsModalVisible, setEarningsModalVisible] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
   const [counterOfferOrderId, setCounterOfferOrderId] = useState<string | null>(null);
   const [customCounterOffer, setCustomCounterOffer] = useState<string>('');
@@ -167,7 +169,7 @@ export default function CourierHomeScreen() {
       setCorridorAlerts((prev) => [alert, ...prev.filter((a) => a.orderId !== alert.orderId)]);
     };
 
-    const handleOrderCancelled = (data: { orderId: string }) => {
+    const handleOrderCancelled = (data: { orderId: string; reason?: string }) => {
       setAvailableOrders((prev) => prev.filter((o) => o.orderId !== data.orderId));
       setActiveOrders((prev) => prev.filter((o) => o.id !== data.orderId));
       setSubmittedBids((prev) => {
@@ -175,11 +177,47 @@ export default function CourierHomeScreen() {
         delete next[data.orderId];
         return next;
       });
+      setPreviewOrder((current) => {
+        if (current && current.orderId === data.orderId) {
+          setActiveNotification({
+            id: `cancelled_${data.orderId}`,
+            type: 'INFO',
+            title: 'Solicitud Cancelada',
+            message: data.reason || 'El cliente ha cancelado la solicitud.',
+          });
+          return null;
+        }
+        return current;
+      });
+    };
+
+    const handleOrderTaken = (data: { orderId: string; courierId?: string; message?: string }) => {
+      if (data.courierId !== user?.id) {
+        setAvailableOrders((prev) => prev.filter((o) => o.orderId !== data.orderId));
+        setSubmittedBids((prev) => {
+          const next = { ...prev };
+          delete next[data.orderId];
+          return next;
+        });
+        setPreviewOrder((current) => {
+          if (current && current.orderId === data.orderId) {
+            setActiveNotification({
+              id: `taken_${data.orderId}`,
+              type: 'INFO',
+              title: 'Pedido Asignado',
+              message: 'El pedido fue tomado por otro conductor.',
+            });
+            return null;
+          }
+          return current;
+        });
+      }
     };
 
     // Al asignarse la orden al conductor
     const handleOrderAssigned = async (payload: SocketOrderAssignedPayload) => {
       if (payload.courier?.id === user?.id) {
+        setPreviewOrder(null);
         try {
           const res = await api.get<ServiceOrder>(`/api/orders/${payload.orderId}`);
           if (isMounted) {
@@ -246,6 +284,7 @@ export default function CourierHomeScreen() {
     socket.on(SOCKET_EVENTS.ORDER_NEW_AVAILABLE, handleNewOrder);
     socket.on(SOCKET_EVENTS.ORDER_CORRIDOR_ALERT, handleCorridorAlert);
     socket.on(SOCKET_EVENTS.ORDER_CANCELLED, handleOrderCancelled);
+    socket.on(SOCKET_EVENTS.ORDER_TAKEN, handleOrderTaken);
     socket.on(SOCKET_EVENTS.ORDER_ASSIGNED, handleOrderAssigned);
     socket.on(SOCKET_EVENTS.CHAT_RECEIVE, handleChatReceive);
 
@@ -254,6 +293,7 @@ export default function CourierHomeScreen() {
       socket.off(SOCKET_EVENTS.ORDER_NEW_AVAILABLE, handleNewOrder);
       socket.off(SOCKET_EVENTS.ORDER_CORRIDOR_ALERT, handleCorridorAlert);
       socket.off(SOCKET_EVENTS.ORDER_CANCELLED, handleOrderCancelled);
+      socket.off(SOCKET_EVENTS.ORDER_TAKEN, handleOrderTaken);
       socket.off(SOCKET_EVENTS.ORDER_ASSIGNED, handleOrderAssigned);
       socket.off(SOCKET_EVENTS.CHAT_RECEIVE, handleChatReceive);
       locationTracker.stopTracking();
@@ -290,11 +330,12 @@ export default function CourierHomeScreen() {
         etaMinutes: 10,
       });
       setSubmittedBids((prev) => ({ ...prev, [orderId]: offeredPrice }));
-      if (Platform.OS === 'web') {
-        alert(`Oferta de $${offeredPrice.toLocaleString()} COP enviada. Esperando confirmación del cliente.`);
-      } else {
-        Alert.alert('Oferta enviada', 'El cliente está evaluando tu propuesta.');
-      }
+      setActiveNotification({
+        id: `bid_sent_${Date.now()}`,
+        type: 'STATUS',
+        title: '⏳ ¡Oferta Enviada!',
+        message: `El cliente está evaluando tu propuesta de $${offeredPrice.toLocaleString()} COP.`,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'No se pudo enviar la oferta';
       if (Platform.OS === 'web') alert(`Error: ${msg}`);
@@ -326,11 +367,15 @@ export default function CourierHomeScreen() {
         orderId: selectedOrderIdForPin,
         pin,
       });
-      const successMsg = `¡Entrega Exitosa! Comisión debitada: $${res.data.commissionDeducted} COP`;
-      if (Platform.OS === 'web') alert(successMsg);
-      else Alert.alert('¡Entrega Exitosa!', successMsg);
+      setActiveNotification({
+        id: `pin_success_${Date.now()}`,
+        type: 'STATUS',
+        title: '🏁 ¡Entrega Exitosa!',
+        message: `Servicio completado. Comisión debitada: $${Number(res.data.commissionDeducted || 0).toLocaleString()} COP`,
+      });
 
       setActiveOrders((prev) => prev.filter((o) => o.id !== selectedOrderIdForPin));
+      setPreviewOrder(null);
       setPinModalVisible(false);
       setSelectedOrderIdForPin(null);
     } catch (err: unknown) {
@@ -411,6 +456,16 @@ export default function CourierHomeScreen() {
           </View>
 
           <View className="flex-row items-center gap-2">
+            <TouchableOpacity
+              onPress={() => setEarningsModalVisible(true)}
+              className="bg-emerald-500/20 border border-emerald-400/50 px-2.5 py-1.5 rounded-full flex-row items-center gap-1 active:bg-emerald-500/30"
+              accessibilityLabel="Ver cuadre de caja y ganancias"
+            >
+              <Text className="text-emerald-300 font-bold text-xs">
+                📊 Cuadre
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={() => router.push('/(courier)/wallet')}
               className="bg-primary/20 border border-primary/50 px-3 py-1.5 rounded-full flex-row items-center gap-1"
@@ -1077,6 +1132,7 @@ export default function CourierHomeScreen() {
         onOpenChats={() => setChatsModalVisible(true)}
         onOpenHistory={() => setHistoryVisible(true)}
         onOpenDestinationMode={() => setDestModalVisible(true)}
+        onOpenDailyEarnings={() => setEarningsModalVisible(true)}
         onOpenWallet={() => router.push('/(courier)/wallet')}
         onOpenPqr={() => setPqrModalVisible(true)}
         onLogout={() => {
@@ -1089,6 +1145,12 @@ export default function CourierHomeScreen() {
       <ProfileModal
         visible={profileModalVisible}
         onClose={() => setProfileModalVisible(false)}
+      />
+
+      <DailyEarningsModal
+        visible={earningsModalVisible}
+        onClose={() => setEarningsModalVisible(false)}
+        walletBalance={user?.walletBalance}
       />
 
       <HistoryModal

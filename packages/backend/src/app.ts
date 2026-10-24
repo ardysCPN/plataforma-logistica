@@ -48,19 +48,19 @@ app.get('/health', async (_req: Request, res: Response) => {
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'Plataforma Logística API',
-    version: '1.0.6',
+    version: '1.0.7',
     documentation: 'Especificación SDD en /agent.md',
   });
 });
 
 app.get('/api/version', (_req: Request, res: Response) => {
   res.json({
-    latestVersion: '1.0.6',
-    latestVersionCode: 7,
+    latestVersion: '1.0.7',
+    latestVersionCode: 8,
     minRequiredVersion: '1.0.0',
     apkDownloadUrl: 'https://domiapp.adhsolutions.tech/downloads/domy.apk',
-    releaseNotes: 'Vistas modales fluidas a pantalla completa (85%), visualización y pulso en GPS de usuario y rutas continuas, precarga y edición de perfil, correo obligatorio en registro, calificación de conductor en historial y confirmaciones estilizadas.',
-    releaseDate: '2026-10-22',
+    releaseNotes: 'Chat en tiempo real con envío instantáneo (Optimistic UI), notificaciones en segundo plano y smartwatch, supresión de parpadeo en banners, retiro automático de pedidos tomados en el radar de conductores, mapas Retina de alta definición y nuevo Cuadre de Caja de ganancias para conductores.',
+    releaseDate: '2026-10-24',
   });
 });
 

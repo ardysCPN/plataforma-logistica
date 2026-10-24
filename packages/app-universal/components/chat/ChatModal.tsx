@@ -61,9 +61,22 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
     const handleMessage = (msg: ChatMessage) => {
       if (msg.orderId === orderId) {
-        soundNotification.playPop();
+        if (msg.senderId !== currentUserId) {
+          soundNotification.playPop();
+        }
         setMessages((prev) => {
+          // Si ya existe exactamente con el mismo ID de base de datos
           if (prev.some((m) => m.id === msg.id)) return prev;
+
+          // Si es un mensaje propio confirmado por el servidor, reemplazar el mensaje temporal
+          if (msg.senderId === currentUserId) {
+            const tempIdx = prev.findIndex((m) => m.id.startsWith('temp_') && m.content === msg.content);
+            if (tempIdx !== -1) {
+              const updated = [...prev];
+              updated[tempIdx] = msg;
+              return updated;
+            }
+          }
           return [...prev, msg];
         });
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
@@ -76,11 +89,26 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       socket.off(SOCKET_EVENTS.CHAT_RECEIVE, handleMessage);
       socket.emit('order:leave', orderId);
     };
-  }, [visible, orderId]);
+  }, [visible, orderId, currentUserId]);
 
   const handleSend = async (contentToSend?: string) => {
     const content = contentToSend || text.trim();
     if (!content) return;
+
+    const tempId = `temp_${Date.now()}`;
+    const optimisticMsg: ChatMessage = {
+      id: tempId,
+      orderId,
+      senderId: currentUserId,
+      messageType: 'TEXT',
+      content,
+      createdAt: new Date().toISOString(),
+    };
+
+    // 1. Mostrar de inmediato el mensaje en la pantalla del usuario (Optimistic UI)
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setText('');
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 50);
 
     setLoading(true);
     try {
@@ -90,8 +118,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         messageType: 'TEXT',
         content,
       });
-      setText('');
-      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err) {
       console.warn('Error enviando mensaje:', err);
     } finally {

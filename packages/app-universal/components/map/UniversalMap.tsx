@@ -173,8 +173,11 @@ function buildNativeLeafletHtml(initial: {
           attributionControl: false
         }).setView([initial.center.latitude, initial.center.longitude], initial.zoom || 14);
 
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          subdomains: 'abcd',
+          maxZoom: 20,
+          detectRetina: true,
+          attribution: '© OpenStreetMap contributors © CARTO'
         }).addTo(map);
 
         if (initial.darkMode) {
@@ -365,9 +368,11 @@ function buildNativeLeafletHtml(initial: {
             if (data.fitRoute) {
               map.fitBounds(routePolyline.getBounds(), { padding: [45, 45] });
             }
-          } else if (routePolyline) {
-            map.removeLayer(routePolyline);
-            routePolyline = null;
+          } else {
+            if (routePolyline) {
+              map.removeLayer(routePolyline);
+              routePolyline = null;
+            }
           }
         };
 
@@ -636,11 +641,11 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         const maplibreglModule = require('maplibre-gl');
         const maplibregl = maplibreglModule.default || maplibreglModule;
 
-        // Teselas OpenStreetMap 100% libres y sin necesidad de API keys
+        // Teselas de alta definición CartoDB Voyager Retina (Ultra nítidas en pantallas modernas)
         const tiles = [
-          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+          'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+          'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
         ];
 
         if (!mapInstanceRef.current && mapContainerRef.current) {

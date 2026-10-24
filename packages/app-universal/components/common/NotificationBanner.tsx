@@ -21,21 +21,29 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({
 }) => {
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const isVisibleRef = useRef(false);
 
   useEffect(() => {
     if (notification) {
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          bounciness: 4,
-        }),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      if (!isVisibleRef.current) {
+        isVisibleRef.current = true;
+        Animated.parallel([
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }),
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      } else {
+        // Ya está visible: solo asegurar posición fija sin re-animar bruscamente desde arriba
+        translateY.setValue(0);
+        opacity.setValue(1);
+      }
 
       const timer = setTimeout(() => {
         handleClose();
@@ -43,6 +51,7 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({
 
       return () => clearTimeout(timer);
     } else {
+      isVisibleRef.current = false;
       translateY.setValue(-100);
       opacity.setValue(0);
     }
@@ -61,6 +70,7 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({
         useNativeDriver: true,
       }),
     ]).start(() => {
+      isVisibleRef.current = false;
       onDismiss();
     });
   };

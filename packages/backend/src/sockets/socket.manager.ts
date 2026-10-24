@@ -100,8 +100,8 @@ export const initSocketManager = (io: SocketIOServer) => {
         const savedMessage = await chatService.saveMessage(user.id, payload);
         const recipientId = (savedMessage as any).recipientId;
 
-        // Emitir a la sala de la orden y al usuario destinatario de forma unificada (Socket.io deduplica automáticamente)
-        let broadcaster = io.to(`order:${payload.orderId}`);
+        // Emitir a la sala de la orden, al remitente y al usuario destinatario de forma unificada (Socket.io deduplica automáticamente)
+        let broadcaster = io.to(`order:${payload.orderId}`).to(`user:${user.id}`);
         if (recipientId) {
           broadcaster = broadcaster.to(`user:${recipientId}`);
         }
@@ -150,6 +150,14 @@ export const socketEvents = {
       ioInstance.to(`order:${orderId}`).emit(SOCKET_EVENTS.ORDER_ASSIGNED, payload);
       ioInstance.to(`user:${payload.courier.id}`).emit(SOCKET_EVENTS.ORDER_ASSIGNED, payload);
       ioInstance.to(`user:${payload.client.id}`).emit(SOCKET_EVENTS.ORDER_ASSIGNED, payload);
+
+      // Notificar de inmediato a todos los conductores que la orden fue tomada
+      // para que desaparezca de su lista de disponibles
+      ioInstance.to('role:COURIER').emit(SOCKET_EVENTS.ORDER_TAKEN, {
+        orderId,
+        courierId: payload.courier.id,
+        message: 'El pedido fue tomado por otro conductor',
+      });
     }
   },
 
@@ -181,10 +189,14 @@ export const socketEvents = {
     }
   },
 
-  emitOrderCancelled(orderId: string) {
+  emitOrderCancelled(orderId: string, reason?: string) {
     if (ioInstance) {
-      ioInstance.to('role:COURIER').emit(SOCKET_EVENTS.ORDER_CANCELLED, { orderId });
-      ioInstance.to(`order:${orderId}`).emit(SOCKET_EVENTS.ORDER_CANCELLED, { orderId });
+      const cancelPayload = {
+        orderId,
+        reason: reason || 'El cliente ha cancelado la solicitud',
+      };
+      ioInstance.to('role:COURIER').emit(SOCKET_EVENTS.ORDER_CANCELLED, cancelPayload);
+      ioInstance.to(`order:${orderId}`).emit(SOCKET_EVENTS.ORDER_CANCELLED, cancelPayload);
     }
   },
 };
