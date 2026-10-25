@@ -6,8 +6,9 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build:shared && npm run build:backend",
     "build:shared": "npm run build -w @plataforma/shared",
+    "build:backend": "npm run build -w @plataforma/backend",
     "test": "npm run test --workspaces --if-present",
     "dev:backend": "npm run dev -w @plataforma/backend",
     "dev:app": "npm run dev -w @plataforma/app-universal"

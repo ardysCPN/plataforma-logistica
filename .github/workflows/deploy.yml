@@ -24,8 +24,11 @@ jobs:
       - name: Instalar Dependencias
         run: npm ci
 
-      - name: Compilar Workspaces
-        run: npm run build
+      - name: Compilar Paquete Compartido
+        run: npm run build -w @plataforma/shared
+
+      - name: Compilar Backend
+        run: npm run build -w @plataforma/backend
 
       - name: Ejecutar Suite de Pruebas Automatizadas
         run: npm run test --workspaces
