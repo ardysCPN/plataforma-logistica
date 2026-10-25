@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Linking, Platform } from 'react-native';
 import { UniversalDialog } from './UniversalDialog';
-import { VersionCheckResult } from '../../services/versionService';
+import { VersionCheckResult, versionService } from '../../services/versionService';
 
 interface UpdatePromptModalProps {
   visible: boolean;
@@ -23,11 +23,21 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({
         window.open(url, '_blank');
       }
     });
+    versionService.dismissPromptForSession();
+    onClose();
+  };
+
+  const handleDismiss = () => {
+    versionService.dismissPromptForSession();
     onClose();
   };
 
   return (
-    <UniversalDialog visible={visible} onClose={onClose} maxWidth={390}>
+    <UniversalDialog
+      visible={visible}
+      onClose={versionInfo.isMandatory ? undefined : handleDismiss}
+      maxWidth={390}
+    >
       <View className="items-center p-2 text-center w-full">
         <View className="w-16 h-16 rounded-2xl bg-emerald-100 items-center justify-center mb-4 border border-emerald-200">
           <Text className="text-3xl">📲</Text>
@@ -37,14 +47,21 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({
           Nueva Versión Disponible
         </Text>
 
-        <View className="bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 mb-3">
+        <View className="bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 mb-3 flex-row items-center gap-1.5">
           <Text className="text-xs font-bold text-emerald-800">
             v{versionInfo.currentVersion} → v{versionInfo.latestVersion}
           </Text>
+          {versionInfo.isMandatory && (
+            <Text className="text-[10px] font-black uppercase text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-md">
+              Crítica
+            </Text>
+          )}
         </View>
 
         <Text className="text-sm text-slate-600 mb-4 text-center leading-relaxed">
-          Esta versión está desactualizada. ¿Deseas descargar la versión más reciente con mejoras en mapa, velocidad y estabilidad?
+          {versionInfo.isMandatory
+            ? 'Esta actualización incluye cambios críticos obligatorios para continuar operando en la plataforma.'
+            : 'Hay una nueva versión disponible con mejoras de mapas, velocidad y estabilidad. ¿Deseas instalarla ahora?'}
         </Text>
 
         {versionInfo.releaseNotes ? (
@@ -69,14 +86,16 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={onClose}
-            className="w-full py-2.5 rounded-xl items-center justify-center active:opacity-70"
-          >
-            <Text className="text-xs font-bold text-slate-500">
-              Recordar más tarde
-            </Text>
-          </TouchableOpacity>
+          {!versionInfo.isMandatory && (
+            <TouchableOpacity
+              onPress={handleDismiss}
+              className="w-full py-2.5 rounded-xl items-center justify-center active:opacity-70"
+            >
+              <Text className="text-xs font-bold text-slate-500">
+                Recordar más tarde
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </UniversalDialog>

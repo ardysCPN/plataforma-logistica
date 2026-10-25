@@ -3,6 +3,7 @@ import { User, CourierProfile, LoginInput, RegisterClientInput, RegisterCourierI
 import { api, setAuthToken } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
 import { appStorage } from '../services/storage';
+import { versionService } from '../services/versionService';
 
 interface AuthState {
   user: User | null;
@@ -161,6 +162,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
+    versionService.resetSessionDismissal();
     setAuthToken(null);
     disconnectSocket();
     appStorage.removeItem('auth_token');

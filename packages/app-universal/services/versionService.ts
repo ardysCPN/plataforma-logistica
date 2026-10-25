@@ -1,7 +1,19 @@
-import { api } from './api';
+let detectedVersion = '1.0.8';
+let detectedVersionCode = 9;
 
-export const CURRENT_APP_VERSION = '1.0.7';
-export const CURRENT_VERSION_CODE = 8;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Constants = require('expo-constants');
+  const config = Constants?.default?.expoConfig || Constants?.expoConfig;
+  if (config?.version) detectedVersion = config.version;
+  if (config?.android?.versionCode) detectedVersionCode = config.android.versionCode;
+} catch {
+  // Fallback para entornos de test unitarios Jest Node
+}
+
+export const CURRENT_APP_VERSION = detectedVersion;
+export const CURRENT_VERSION_CODE = detectedVersionCode;
+import { api } from './api';
 
 export interface AppVersionInfo {
   latestVersion: string;
@@ -14,6 +26,7 @@ export interface AppVersionInfo {
 
 export interface VersionCheckResult {
   isOutdated: boolean;
+  isMandatory: boolean;
   currentVersion: string;
   latestVersion: string;
   apkDownloadUrl: string;
@@ -22,10 +35,23 @@ export interface VersionCheckResult {
 
 let cachedCheck: VersionCheckResult | null = null;
 let lastCheckTime = 0;
+let dismissedForSession = false;
 
 export const versionService = {
   getCurrentVersion(): string {
     return CURRENT_APP_VERSION;
+  },
+
+  dismissPromptForSession() {
+    dismissedForSession = true;
+  },
+
+  isDismissedForSession(): boolean {
+    return dismissedForSession;
+  },
+
+  resetSessionDismissal() {
+    dismissedForSession = false;
   },
 
   async checkVersion(force = false): Promise<VersionCheckResult> {
@@ -39,9 +65,13 @@ export const versionService = {
       const res = await api.get<AppVersionInfo>('/api/version');
       if (res.data && res.data.latestVersion) {
         const isOutdated = this.compareVersions(CURRENT_APP_VERSION, res.data.latestVersion) < 0;
+        const isMandatory = res.data.minRequiredVersion
+          ? this.compareVersions(CURRENT_APP_VERSION, res.data.minRequiredVersion) < 0
+          : false;
 
         cachedCheck = {
           isOutdated,
+          isMandatory,
           currentVersion: CURRENT_APP_VERSION,
           latestVersion: res.data.latestVersion,
           apkDownloadUrl: res.data.apkDownloadUrl || 'https://domiapp.adhsolutions.tech/downloads/domy.apk',
@@ -56,6 +86,7 @@ export const versionService = {
 
     return {
       isOutdated: false,
+      isMandatory: false,
       currentVersion: CURRENT_APP_VERSION,
       latestVersion: CURRENT_APP_VERSION,
       apkDownloadUrl: 'https://domiapp.adhsolutions.tech/downloads/domy.apk',

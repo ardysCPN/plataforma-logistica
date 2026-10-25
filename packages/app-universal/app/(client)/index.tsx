@@ -175,10 +175,11 @@ export default function ClientHomeScreen() {
 
   // Verificación de versión actualizada en el inicio
   useEffect(() => {
+    if (versionService.isDismissedForSession()) return;
     versionService
       .checkVersion()
       .then((res) => {
-        if (res && res.isOutdated) {
+        if (res && res.isOutdated && (!versionService.isDismissedForSession() || res.isMandatory)) {
           setVersionInfo(res);
           setUpdatePromptVisible(true);
         }

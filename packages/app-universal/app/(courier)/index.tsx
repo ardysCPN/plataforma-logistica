@@ -96,6 +96,20 @@ export default function CourierHomeScreen() {
     }
   };
 
+  // Verificación de actualización disponible (se ejecuta únicamente 1 vez por sesión)
+  useEffect(() => {
+    if (versionService.isDismissedForSession()) return;
+    versionService
+      .checkVersion()
+      .then((res) => {
+        if (res && res.isOutdated && (!versionService.isDismissedForSession() || res.isMandatory)) {
+          setVersionInfo(res);
+          setUpdatePromptVisible(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -137,17 +151,6 @@ export default function CourierHomeScreen() {
         }
       })
       .catch((err) => console.warn('No hay órdenes activas asignadas:', err));
-
-    // Verificación de actualización disponible
-    versionService
-      .checkVersion()
-      .then((res) => {
-        if (isMounted && res && res.isOutdated) {
-          setVersionInfo(res);
-          setUpdatePromptVisible(true);
-        }
-      })
-      .catch(() => {});
 
     const socket = getSocket();
 
