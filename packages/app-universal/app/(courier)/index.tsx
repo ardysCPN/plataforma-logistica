@@ -21,6 +21,7 @@ import { getSocket } from '../../services/socket';
 import { locationTracker } from '../../services/locationTracker';
 import { notificationService } from '../../services/notificationService';
 import { versionService, VersionCheckResult } from '../../services/versionService';
+import { formatServiceType, formatOrderStatus, getServiceIcon } from '../../utils/formatters';
 import {
   ServiceOrder,
   SOCKET_EVENTS,
@@ -154,14 +155,14 @@ export default function CourierHomeScreen() {
       setAvailableOrders((prev) => [order, ...prev.filter((o) => o.orderId !== order.orderId)]);
       notificationService.showSystemNotification({
         title: '🔔 ¡Nuevo Servicio Solicitado!',
-        body: `Se solicita ${order.serviceType} en ${order.originAddress || 'tu zona'}. Tarifa: $${Number(order.offeredPrice || 0).toLocaleString()} COP`,
+        body: `Se solicita ${formatServiceType(order.serviceType)} en ${order.originAddress || 'tu zona'}. Tarifa: $${Number(order.offeredPrice || 0).toLocaleString()} COP`,
         sound: true,
       });
       setActiveNotification({
         id: `order_${Date.now()}`,
         type: 'STATUS',
         title: '🔔 ¡Nuevo Servicio Solicitado!',
-        message: `Se solicita ${order.serviceType} en ${order.originAddress || 'tu zona'}. Tarifa: $${Number(order.offeredPrice || 0).toLocaleString()} COP`,
+        message: `Se solicita ${formatServiceType(order.serviceType)} en ${order.originAddress || 'tu zona'}. Tarifa: $${Number(order.offeredPrice || 0).toLocaleString()} COP`,
       });
     };
 
@@ -589,7 +590,7 @@ export default function CourierHomeScreen() {
                     <View className="flex-row items-center gap-1.5">
                       <View className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                       <Text className="text-xs font-black text-primary uppercase">
-                        {order.serviceType} • {order.status}
+                        {formatServiceType(order.serviceType)} • {formatOrderStatus(order.status)}
                       </Text>
                     </View>
                     <Text className="text-lg font-black text-slate-900">
@@ -770,10 +771,10 @@ export default function CourierHomeScreen() {
                 <View className="flex-row items-center justify-between mb-2">
                   <View className="flex-row items-center gap-1.5">
                     <Text className="text-base">
-                      {order.serviceType === 'DELIVERY' ? '📦' : order.serviceType === 'ERRAND' ? '🛒' : '🛵'}
+                      {getServiceIcon(order.serviceType)}
                     </Text>
                     <Text className={`text-xs font-bold uppercase ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      {order.serviceType}
+                      {formatServiceType(order.serviceType)}
                     </Text>
                   </View>
                   <Text className="text-lg font-black text-primary">

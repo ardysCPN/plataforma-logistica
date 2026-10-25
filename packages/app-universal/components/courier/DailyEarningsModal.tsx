@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { UniversalBottomSheet } from '../common/UniversalBottomSheet';
 import { api } from '../../services/api';
+import { formatServiceType } from '../../utils/formatters';
 
 interface DailyEarningsModalProps {
   visible: boolean;
@@ -321,7 +322,7 @@ export const DailyEarningsModal: React.FC<DailyEarningsModalProps> = ({
                           </View>
                           <View>
                             <Text className="text-xs font-black text-slate-800">
-                              {order.serviceType}
+                              {formatServiceType(order.serviceType)}
                             </Text>
                             <Text className="text-[10px] text-slate-400">
                               {dateStr} • {order.counterpartName || 'Cliente'}

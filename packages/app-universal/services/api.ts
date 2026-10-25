@@ -39,7 +39,27 @@ export const setAuthToken = (token: string | null) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error.response?.data?.error || error.message || 'Error de conexión';
+    let rawMsg = error.response?.data?.error || error.response?.data?.message;
+    let message: string = Array.isArray(rawMsg)
+      ? rawMsg.join('. ')
+      : typeof rawMsg === 'string'
+      ? rawMsg
+      : '';
+
+    if (!message) {
+      if (error.code === 'ECONNABORTED' || error.message?.toLowerCase().includes('timeout')) {
+        message = 'El servidor tardó demasiado en responder. Por favor verifica tu conexión e intenta de nuevo.';
+      } else if (error.message === 'Network Error' || !error.response) {
+        message = 'No se detecta conexión a internet. Revisa tus datos móviles o red WiFi para continuar.';
+      } else if (error.response?.status === 401) {
+        message = 'Tu sesión ha expirado o el token no es válido. Ingresa nuevamente.';
+      } else if (error.response?.status >= 500) {
+        message = 'El servidor presentó una sobrecarga temporal. Intenta de nuevo en unos segundos.';
+      } else {
+        message = error.message || 'Error de comunicación con el servidor';
+      }
+    }
+
     return Promise.reject(new Error(message));
   }
 );

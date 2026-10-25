@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { UniversalBottomSheet } from './UniversalBottomSheet';
 import { api } from '../../services/api';
+import { formatServiceType, formatOrderStatus, getServiceIcon } from '../../utils/formatters';
 
 interface HistoryItem {
   id: string;
@@ -118,10 +119,10 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                     <View className="flex-row items-center justify-between mb-2">
                       <View className="flex-row items-center gap-1.5">
                         <Text className="text-sm">
-                          {item.serviceType === 'DELIVERY' ? '📦' : item.serviceType === 'ERRAND' ? '🛒' : '🛵'}
+                          {getServiceIcon(item.serviceType)}
                         </Text>
                         <Text className="text-xs font-black text-slate-800 uppercase">
-                          {item.serviceType}
+                          {formatServiceType(item.serviceType)}
                         </Text>
                         <Text className="text-[11px] text-slate-400">• {dateFormatted}</Text>
                       </View>
@@ -144,7 +145,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
                               : 'text-rose-700'
                           }`}
                         >
-                          {isActive ? `🟢 EN CURSO (${item.status})` : isCompleted ? '✅ FINALIZADO' : '❌ CANCELADO'}
+                          {isActive ? `🟢 EN CURSO (${formatOrderStatus(item.status)})` : isCompleted ? '✅ FINALIZADO' : '❌ CANCELADO'}
                         </Text>
                       </View>
                     </View>

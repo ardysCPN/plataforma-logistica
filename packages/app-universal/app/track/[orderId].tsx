@@ -5,6 +5,7 @@ import { UniversalMap } from '../../components/map/UniversalMap';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import { SOCKET_EVENTS, GeoPoint } from '@plataforma/shared';
+import { formatServiceType, formatOrderStatus, formatVehicleType } from '../../utils/formatters';
 
 interface PublicOrderData {
   orderId: string;
@@ -132,7 +133,7 @@ export default function PublicTrackScreen() {
             </Text>
           </View>
           <Text className="text-slate-400 text-xs mt-0.5">
-            {order.serviceType} • {order.status}
+            {formatServiceType(order.serviceType)} • {formatOrderStatus(order.status)}
           </Text>
         </View>
 
@@ -170,7 +171,7 @@ export default function PublicTrackScreen() {
                   {order.courier.firstName} (Conductor)
                 </Text>
                 <Text className="text-xs text-slate-500 font-medium">
-                  ⭐ {(Number(order.courier.ratingAvg) || 5.0).toFixed(1)} • {order.courier.vehicleType}{' '}
+                  ⭐ {(Number(order.courier.ratingAvg) || 5.0).toFixed(1)} • {formatVehicleType(order.courier.vehicleType)}{' '}
                   {order.courier.vehiclePlate ? `• Placa: ${order.courier.vehiclePlate}` : ''}
                 </Text>
               </View>

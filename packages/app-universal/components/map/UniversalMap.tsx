@@ -23,6 +23,7 @@ function buildNativeLeafletHtml(initial: {
   courierLocation?: { latitude: number; longitude: number; bearing?: number } | null;
   userLocation?: GeoPoint | null;
   nearbyCouriers?: NearbyCourierMarker[];
+  orderMarkers?: OrderRadarMarker[];
   isSearching?: boolean;
 }) {
   const initialJson = JSON.stringify(initial);
@@ -44,6 +45,10 @@ function buildNativeLeafletHtml(initial: {
     }
     .leaflet-control-zoom, .leaflet-control-attribution {
       display: none !important;
+    }
+    .leaflet-tile {
+      image-rendering: -webkit-optimize-contrast;
+      filter: saturate(1.12) contrast(1.04);
     }
     .dark-mode-tiles .leaflet-tile {
       filter: invert(90%) hue-rotate(180deg) brightness(85%) contrast(115%) !important;
@@ -173,11 +178,9 @@ function buildNativeLeafletHtml(initial: {
           attributionControl: false
         }).setView([initial.center.latitude, initial.center.longitude], initial.zoom || 14);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-          subdomains: 'abcd',
-          maxZoom: 20,
-          detectRetina: true,
-          attribution: '© OpenStreetMap contributors © CARTO'
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
         if (initial.darkMode) {
@@ -325,6 +328,28 @@ function buildNativeLeafletHtml(initial: {
           }
           Object.keys(markers).forEach(function(k) {
             if (k.startsWith('nearby_') && !activeKeys[k]) {
+              map.removeLayer(markers[k]);
+              delete markers[k];
+            }
+          });
+
+          var activeOrderKeys = {};
+          if (data.orderMarkers && data.orderMarkers.length > 0) {
+            data.orderMarkers.forEach(function(o) {
+              var k = 'order_' + o.id;
+              activeOrderKeys[k] = true;
+              var icon = o.serviceType === 'ERRAND' ? '🛒' : o.serviceType === 'TRANSPORT' ? '🛵' : '📦';
+              var priceText = o.price ? '$' + Number(o.price).toLocaleString('es-CO') + ' COP' : 'Disponible';
+              setMarker(k, o.latitude, o.longitude,
+                '<div style="background:#2563eb;color:white;padding:3px 7px;border-radius:12px;font-weight:800;font-size:11px;display:flex;align-items:center;gap:3px;box-shadow:0 3px 8px rgba(37,99,235,0.4);border:1.5px solid #ffffff;white-space:nowrap;">' +
+                  '<span>' + icon + '</span> <span>' + priceText + '</span>' +
+                '</div>',
+                [110, 26], [55, 13]
+              );
+            });
+          }
+          Object.keys(markers).forEach(function(k) {
+            if (k.startsWith('order_') && !activeOrderKeys[k]) {
               map.removeLayer(markers[k]);
               delete markers[k];
             }
@@ -486,6 +511,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
       courierLocation,
       userLocation,
       nearbyCouriers,
+      orderMarkers,
       isSearching,
     });
   }, []);
@@ -502,6 +528,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
       courierLocation,
       userLocation,
       nearbyCouriers,
+      orderMarkers,
       isSearching,
       darkMode,
       center,
@@ -527,6 +554,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
     userLocation?.latitude,
     userLocation?.longitude,
     JSON.stringify(nearbyCouriers),
+    JSON.stringify(orderMarkers),
     isSearching,
     streetRoute,
     routeCoordinates,
@@ -641,11 +669,11 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
         const maplibreglModule = require('maplibre-gl');
         const maplibregl = maplibreglModule.default || maplibreglModule;
 
-        // Teselas de alta definición CartoDB Voyager Retina (Ultra nítidas en pantallas modernas)
+        // Teselas OpenStreetMap oficiales de alta disponibilidad sin requerimiento de API key
         const tiles = [
-          'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-          'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-          'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+          'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
         ];
 
         if (!mapInstanceRef.current && mapContainerRef.current) {
@@ -921,7 +949,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
 
       orderMarkers.forEach((order) => {
         const key = `order_${order.id}`;
-        const icon = order.serviceType === 'ERRAND' ? '🛒' : '📦';
+        const icon = order.serviceType === 'ERRAND' ? '🛒' : order.serviceType === 'TRANSPORT' ? '🛵' : '📦';
         const priceText = order.price ? `$${order.price.toLocaleString()} COP` : 'Disponible';
         updateOrCreateMarker(
           key,
@@ -1133,6 +1161,15 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
           source={{ html: nativeHtml }}
           onMessage={handleNativeMessage}
           onLoadEnd={() => setNativeMapReady(true)}
+          onRenderProcessGone={(event: any) => {
+            console.warn('WebView render process terminated:', event?.nativeEvent?.didCrash);
+            try {
+              nativeWebViewRef.current?.reload();
+            } catch {}
+          }}
+          onError={(event: any) => {
+            console.warn('WebView map error intercepted:', event?.nativeEvent);
+          }}
           style={{ width: '100%', height: '100%', backgroundColor: darkMode ? '#0f172a' : '#f1f5f9' }}
           javaScriptEnabled={true}
           domStorageEnabled={true}
