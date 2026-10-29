@@ -15,11 +15,13 @@ import { ProfileModal } from '../../components/common/ProfileModal';
 import { NotificationBanner, BannerNotification } from '../../components/common/NotificationBanner';
 import { UpdatePromptModal } from '../../components/common/UpdatePromptModal';
 import { DailyEarningsModal } from '../../components/courier/DailyEarningsModal';
+import { RatingsModal } from '../../components/courier/RatingsModal';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
-import { locationTracker } from '../../services/locationTracker';
+import { locationTracker, setActiveOrdersForTracker } from '../../services/locationTracker';
 import { notificationService } from '../../services/notificationService';
+import { soundNotification } from '../../services/soundNotification';
 import { versionService, VersionCheckResult } from '../../services/versionService';
 import { formatServiceType, formatOrderStatus, getServiceIcon } from '../../utils/formatters';
 import {
@@ -69,6 +71,7 @@ export default function CourierHomeScreen() {
   const [versionInfo, setVersionInfo] = useState<VersionCheckResult | null>(null);
   const [updatePromptVisible, setUpdatePromptVisible] = useState(false);
   const [earningsModalVisible, setEarningsModalVisible] = useState(false);
+  const [ratingsModalVisible, setRatingsModalVisible] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
   const [counterOfferOrderId, setCounterOfferOrderId] = useState<string | null>(null);
   const [customCounterOffer, setCustomCounterOffer] = useState<string>('');
@@ -300,9 +303,13 @@ export default function CourierHomeScreen() {
       socket.off(SOCKET_EVENTS.ORDER_TAKEN, handleOrderTaken);
       socket.off(SOCKET_EVENTS.ORDER_ASSIGNED, handleOrderAssigned);
       socket.off(SOCKET_EVENTS.CHAT_RECEIVE, handleChatReceive);
-      locationTracker.stopTracking();
     };
-  }, [activeOrders, user?.id]);
+  }, [user?.id]);
+
+  // Sincronizar órdenes activas con el rastreador de GPS en segundo plano sin reiniciar el Foreground Service
+  useEffect(() => {
+    setActiveOrdersForTracker(activeOrders.map((o) => o.id));
+  }, [activeOrders]);
 
   // Tomar mandado atómicamente
   const handleClaimErrand = async (orderId: string) => {
@@ -452,10 +459,16 @@ export default function CourierHomeScreen() {
               <Text className="text-white font-black text-base tracking-tight">
                 ⚡ DOMY CONDUCTOR
               </Text>
-              <View className="flex-row items-center gap-1.5 mt-0.5">
+              <TouchableOpacity
+                onPress={() => setRatingsModalVisible(true)}
+                className="flex-row items-center gap-1.5 mt-0.5 active:opacity-75"
+              >
                 <View className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <Text className="text-[11px] text-slate-300">Radar Activo • En Línea</Text>
-              </View>
+                <Text className="text-[11px] text-slate-300">Radar Activo •</Text>
+                <Text className="text-[11px] text-amber-300 font-bold">
+                  ⭐ {Number(user?.ratingAvg || 5.0).toFixed(1)}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -1137,6 +1150,7 @@ export default function CourierHomeScreen() {
         onOpenHistory={() => setHistoryVisible(true)}
         onOpenDestinationMode={() => setDestModalVisible(true)}
         onOpenDailyEarnings={() => setEarningsModalVisible(true)}
+        onOpenRatings={() => setRatingsModalVisible(true)}
         onOpenWallet={() => router.push('/(courier)/wallet')}
         onOpenPqr={() => setPqrModalVisible(true)}
         onLogout={() => {
@@ -1149,12 +1163,18 @@ export default function CourierHomeScreen() {
       <ProfileModal
         visible={profileModalVisible}
         onClose={() => setProfileModalVisible(false)}
+        onOpenRatings={() => setRatingsModalVisible(true)}
       />
 
       <DailyEarningsModal
         visible={earningsModalVisible}
         onClose={() => setEarningsModalVisible(false)}
         walletBalance={user?.walletBalance}
+      />
+
+      <RatingsModal
+        visible={ratingsModalVisible}
+        onClose={() => setRatingsModalVisible(false)}
       />
 
       <HistoryModal

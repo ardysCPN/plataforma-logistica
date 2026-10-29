@@ -76,16 +76,32 @@ export const initSocketManager = (io: SocketIOServer) => {
           [payload.longitude, payload.latitude, payload.bearing || 0, user.id]
         );
 
-        // Retransmitir coordenadas a los clientes de las órdenes activas
-        if (payload.activeOrderIds && payload.activeOrderIds.length > 0) {
-          for (const orderId of payload.activeOrderIds) {
-            io.to(`order:${orderId}`).emit(SOCKET_EVENTS.LOCATION_CLIENT_FEED, {
+        // Consultar órdenes activas asignadas a este conductor en la BD para garantizar emisión continua
+        const ordersRes = await db.query(
+          `SELECT id, client_id as "clientId"
+           FROM service_orders
+           WHERE courier_id = $1
+             AND status IN ('ACCEPTED', 'ARRIVED_AT_ORIGIN', 'PURCHASING', 'PICKED_UP', 'IN_TRANSIT')`,
+          [user.id]
+        );
+
+        const orderIds = new Set<string>(ordersRes.rows.map((r: any) => r.id));
+        if (payload.activeOrderIds && Array.isArray(payload.activeOrderIds)) {
+          payload.activeOrderIds.forEach((id: string) => orderIds.add(id));
+        }
+
+        for (const orderId of orderIds) {
+          const clientRow = ordersRes.rows.find((r: any) => r.id === orderId);
+          socketEvents.emitLocationFeed(
+            orderId,
+            {
               orderId,
               latitude: payload.latitude,
               longitude: payload.longitude,
               bearing: payload.bearing || 0,
-            });
-          }
+            },
+            clientRow?.clientId
+          );
         }
       } catch (err) {
         console.error('Error al actualizar posición GPS de conductor:', err);
@@ -98,19 +114,39 @@ export const initSocketManager = (io: SocketIOServer) => {
 
       try {
         const savedMessage = await chatService.saveMessage(user.id, payload);
-        const recipientId = (savedMessage as any).recipientId;
-
-        // Emitir a la sala de la orden, al remitente y al usuario destinatario de forma unificada (Socket.io deduplica automáticamente)
-        let broadcaster = io.to(`order:${payload.orderId}`).to(`user:${user.id}`);
-        if (recipientId) {
-          broadcaster = broadcaster.to(`user:${recipientId}`);
-        }
-        broadcaster.emit(SOCKET_EVENTS.CHAT_RECEIVE, savedMessage);
+        socketEvents.emitChatReceive(savedMessage);
       } catch (err: unknown) {
         socket.emit('error', {
           event: SOCKET_EVENTS.CHAT_SEND,
           message: err instanceof Error ? err.message : 'Error al enviar mensaje',
         });
+      }
+    });
+
+    // Indicador de escritura en tiempo real ("escribiendo...")
+    socket.on(SOCKET_EVENTS.CHAT_TYPING, async (payload: { orderId: string; isTyping: boolean }) => {
+      if (!user || !payload?.orderId) return;
+      try {
+        const orderRes = await db.query(
+          `SELECT client_id as "clientId", courier_id as "courierId" FROM service_orders WHERE id = $1`,
+          [payload.orderId]
+        );
+        if (orderRes.rows.length > 0) {
+          const order = orderRes.rows[0];
+          const recipientId = user.id === order.clientId ? order.courierId : order.clientId;
+          socketEvents.emitChatTyping(
+            payload.orderId,
+            {
+              orderId: payload.orderId,
+              senderId: user.id,
+              senderRole: user.role,
+              isTyping: Boolean(payload.isTyping),
+            },
+            recipientId
+          );
+        }
+      } catch {
+        // Ignorar fallos de escritura
       }
     });
 
@@ -127,6 +163,40 @@ export const initSocketManager = (io: SocketIOServer) => {
 
 // Emisores Helper para uso desde los servicios
 export const socketEvents = {
+  emitLocationFeed(
+    orderId: string,
+    payload: { orderId: string; latitude: number; longitude: number; bearing?: number },
+    clientId?: string
+  ) {
+    if (ioInstance) {
+      let broadcaster = ioInstance.to(`order:${orderId}`);
+      if (clientId) broadcaster = broadcaster.to(`user:${clientId}`);
+      broadcaster.emit(SOCKET_EVENTS.LOCATION_CLIENT_FEED, payload);
+    }
+  },
+
+  emitChatReceive(message: any) {
+    if (ioInstance && message) {
+      let broadcaster = ioInstance.to(`order:${message.orderId}`).to(`user:${message.senderId}`);
+      if (message.recipientId) {
+        broadcaster = broadcaster.to(`user:${message.recipientId}`);
+      }
+      broadcaster.emit(SOCKET_EVENTS.CHAT_RECEIVE, message);
+    }
+  },
+
+  emitChatTyping(
+    orderId: string,
+    payload: { orderId: string; senderId: string; senderRole?: string; isTyping: boolean },
+    recipientId?: string
+  ) {
+    if (ioInstance) {
+      let broadcaster = ioInstance.to(`order:${orderId}`);
+      if (recipientId) broadcaster = broadcaster.to(`user:${recipientId}`);
+      broadcaster.emit(SOCKET_EVENTS.CHAT_TYPING, payload);
+    }
+  },
+
   emitNewOrderAvailable(payload: SocketOrderNewAvailablePayload) {
     if (ioInstance) {
       ioInstance.to('role:COURIER').emit(SOCKET_EVENTS.ORDER_NEW_AVAILABLE, payload);

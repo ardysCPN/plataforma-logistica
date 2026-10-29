@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { chatService } from './chat.service';
+import { socketEvents } from '../../sockets/socket.manager';
 
 export const chatController = {
   async sendMessage(req: Request, res: Response): Promise<void> {
@@ -9,6 +10,7 @@ export const chatController = {
         return;
       }
       const message = await chatService.saveMessage(req.user.id, req.body);
+      socketEvents.emitChatReceive(message);
       res.status(201).json(message);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error al enviar mensaje';

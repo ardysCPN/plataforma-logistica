@@ -18,9 +18,10 @@ import { UniversalBottomSheet } from './UniversalBottomSheet';
 interface ProfileModalProps {
   visible: boolean;
   onClose: () => void;
+  onOpenRatings?: () => void;
 }
 
-export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) => {
+export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose, onOpenRatings }) => {
   const { user, courierProfile, updateAvatar, updateProfile } = useAuthStore();
   const [fullName, setFullName] = useState(user?.fullName || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -206,11 +207,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose }) 
                 </Text>
               </View>
               {isCourier && (
-                <View className="bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200">
+                <TouchableOpacity
+                  onPress={() => {
+                    if (onOpenRatings) {
+                      onClose();
+                      onOpenRatings();
+                    }
+                  }}
+                  className="bg-emerald-100 px-3 py-1 rounded-full border border-emerald-200 active:bg-emerald-200"
+                >
                   <Text className="text-[11px] font-bold text-emerald-800">
-                    ⭐ {(courierProfile?.rating || 5.0).toFixed(1)} ({courierProfile?.completedOrders || 0} viajes)
+                    ⭐ {(Number(user?.ratingAvg) || 5.0).toFixed(1)} ({user?.ratingCount || 0} reseñas) ›
                   </Text>
-                </View>
+                </TouchableOpacity>
               )}
             </View>
 

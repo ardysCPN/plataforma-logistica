@@ -79,8 +79,29 @@ export default function PublicTrackScreen() {
     socket.on(SOCKET_EVENTS.LOCATION_CLIENT_FEED, handleFeed);
     socket.on(SOCKET_EVENTS.ORDER_STATUS_CHANGE, handleStatusChange);
 
+    // Respaldo de sondeo continuo cada 5 segundos para telemetría constante
+    const pollInterval = setInterval(() => {
+      if (!isMounted) return;
+      api.get<PublicOrderData>(`/api/orders/public-track/${orderId}`)
+        .then((res) => {
+          if (!isMounted || !res.data) return;
+          if (res.data.courier?.location) {
+            setCourierLocation({
+              latitude: res.data.courier.location.latitude,
+              longitude: res.data.courier.location.longitude,
+              bearing: res.data.courier.location.bearing,
+            });
+          }
+          if (res.data.status) {
+            setOrder((prev) => prev ? { ...prev, status: res.data.status } : null);
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
       socket.emit('order:leave', orderId);
       socket.off(SOCKET_EVENTS.LOCATION_CLIENT_FEED, handleFeed);
       socket.off(SOCKET_EVENTS.ORDER_STATUS_CHANGE, handleStatusChange);

@@ -26,6 +26,7 @@ interface AppDrawerProps {
   onOpenHistory: () => void;
   onOpenDestinationMode?: () => void;
   onOpenDailyEarnings?: () => void;
+  onOpenRatings?: () => void;
   onOpenPqr: () => void;
   onOpenWallet?: () => void;
   onLogout: () => void;
@@ -44,6 +45,7 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
   onOpenHistory,
   onOpenDestinationMode,
   onOpenDailyEarnings,
+  onOpenRatings,
   onOpenPqr,
   onOpenWallet,
   onLogout,
@@ -316,6 +318,23 @@ export const AppDrawer: React.FC<AppDrawerProps> = ({
                       </Text>
                       <Text className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
                         Consolidado por día, semana y mes
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
+                {isCourier && onOpenRatings && (
+                  <TouchableOpacity
+                    onPress={() => handleItemPress(onOpenRatings)}
+                    className="flex-row items-center gap-3 p-3.5 rounded-2xl active:bg-slate-100 dark:active:bg-slate-800 bg-amber-500/10 border border-amber-500/20"
+                  >
+                    <Text className="text-xl">⭐</Text>
+                    <View className="flex-1">
+                      <Text className="text-sm font-bold text-amber-800 dark:text-amber-300">
+                        Mis Calificaciones & Reseñas
+                      </Text>
+                      <Text className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                        Ver puntuación, estrellas y comentarios
                       </Text>
                     </View>
                   </TouchableOpacity>

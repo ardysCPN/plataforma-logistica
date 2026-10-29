@@ -3,6 +3,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { getSocket } from './socket';
 import { appStorage } from './storage';
+import { api } from './api';
 import { SOCKET_EVENTS } from '@plataforma/shared';
 
 export const LOCATION_TASK_NAME = 'background-location-task';
@@ -11,6 +12,7 @@ let activeOrdersList: string[] = [];
 
 export const setActiveOrdersForTracker = (orderIds: string[]) => {
   activeOrdersList = orderIds;
+  appStorage.setJSON('active_order_ids', orderIds);
 };
 
 // Definir la tarea en segundo plano solo si TaskManager está disponible
@@ -24,15 +26,34 @@ if (Platform.OS !== 'web') {
       const { locations } = data as { locations: Location.LocationObject[] };
       const location = locations[0];
       if (location) {
+        const coords = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          bearing: location.coords.heading || 0,
+          speed: location.coords.speed || 0,
+        };
+        appStorage.setJSON('last_known_location', { latitude: coords.latitude, longitude: coords.longitude });
+
+        const activeOrderIds = appStorage.getJSON<string[]>('active_order_ids') || activeOrdersList;
+
+        // 1. Enviar vía Socket en tiempo real si está conectado
         const socket = getSocket();
         if (socket && socket.connected) {
           socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            bearing: location.coords.heading || 0,
-            speed: location.coords.speed || 0,
-            activeOrderIds: activeOrdersList,
+            ...coords,
+            activeOrderIds,
           });
+        }
+
+        // 2. Puente HTTP de respaldo para cuando el socket esté en reposo por pantalla bloqueada en Android
+        const token = appStorage.getItem('auth_token');
+        if (token) {
+          api
+            .post('/api/orders/courier/location', {
+              ...coords,
+              activeOrderIds,
+            })
+            .catch(() => {});
         }
       }
     }
@@ -159,6 +180,7 @@ export const locationTracker = {
 
   async startTracking(orderIds: string[] = []) {
     activeOrdersList = orderIds;
+    appStorage.setJSON('active_order_ids', orderIds);
 
     if (Platform.OS === 'web') {
       if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
@@ -173,31 +195,36 @@ export const locationTracker = {
 
         const emitPosition = (pos: GeolocationPosition) => {
           const socket = getSocket();
+          const coords = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            bearing: pos.coords.heading || 0,
+            speed: pos.coords.speed || 0,
+            activeOrderIds: activeOrdersList,
+          };
           if (socket && socket.connected) {
-            socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
-              bearing: pos.coords.heading || 0,
-              speed: pos.coords.speed || 0,
-              activeOrderIds: activeOrdersList,
-            });
+            socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, coords);
+          }
+          const token = appStorage.getItem('auth_token');
+          if (token) {
+            api.post('/api/orders/courier/location', coords).catch(() => {});
           }
         };
 
         webWatchId = navigator.geolocation.watchPosition(
           emitPosition,
           (err) => console.warn('Error rastreando GPS web:', err.message),
-          { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+          { enableHighAccuracy: true, maximumAge: 2500, timeout: 8000 }
         );
 
-        // Sondeo activo periódico cada 3.5 segundos por si el navegador pausa watchPosition durante llamadas o tabs en fondo
+        // Sondeo activo periódico cada 3 segundos por si el navegador pausa watchPosition durante llamadas o tabs en fondo
         webPollInterval = setInterval(() => {
           navigator.geolocation.getCurrentPosition(
             emitPosition,
             () => {},
-            { enableHighAccuracy: true, maximumAge: 3000, timeout: 5000 }
+            { enableHighAccuracy: true, maximumAge: 2500, timeout: 5000 }
           );
-        }, 3500);
+        }, 3000);
       }
       return;
     }
@@ -207,10 +234,13 @@ export const locationTracker = {
       if (!hasStarted) {
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
           accuracy: Location.Accuracy.High,
-          timeInterval: 4000, // Cada 4 segundos
-          distanceInterval: 15, // Cada 15 metros
+          timeInterval: 3000, // Cada 3 segundos
+          distanceInterval: 2, // Cada 2 metros para máxima fluidez en trayecto
+          deferredUpdatesInterval: 3000,
+          deferredUpdatesDistance: 2,
+          showsBackgroundLocationIndicator: true,
           foregroundService: {
-            notificationTitle: 'DOMY Conductor Activo',
+            notificationTitle: '⚡ DOMY Conductor Activo',
             notificationBody: 'Transmitiendo posición GPS de entrega en tiempo real',
             notificationColor: '#FF6B00',
           },
@@ -221,17 +251,22 @@ export const locationTracker = {
       try {
         if (!nativeWatchSubscription) {
           nativeWatchSubscription = await Location.watchPositionAsync(
-            { accuracy: Location.Accuracy.High, timeInterval: 4000, distanceInterval: 15 },
+            { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 2 },
             (location) => {
+              const coords = {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+                bearing: location.coords.heading || 0,
+                speed: location.coords.speed || 0,
+                activeOrderIds: activeOrdersList,
+              };
               const socket = getSocket();
               if (socket && socket.connected) {
-                socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, {
-                  latitude: location.coords.latitude,
-                  longitude: location.coords.longitude,
-                  bearing: location.coords.heading || 0,
-                  speed: location.coords.speed || 0,
-                  activeOrderIds: activeOrdersList,
-                });
+                socket.emit(SOCKET_EVENTS.LOCATION_UPDATE, coords);
+              }
+              const token = appStorage.getItem('auth_token');
+              if (token) {
+                api.post('/api/orders/courier/location', coords).catch(() => {});
               }
             }
           );
@@ -242,7 +277,7 @@ export const locationTracker = {
     }
   },
 
-  async stopTracking() {
+  async stopTracking(force = false) {
     if (Platform.OS === 'web') {
       if (webWatchId !== null && typeof navigator !== 'undefined') {
         navigator.geolocation.clearWatch(webWatchId);
@@ -255,18 +290,20 @@ export const locationTracker = {
       return;
     }
 
-    if (nativeWatchSubscription) {
+    if (force && nativeWatchSubscription) {
       nativeWatchSubscription.remove();
       nativeWatchSubscription = null;
     }
 
-    try {
-      const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-      if (hasStarted) {
-        await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+    if (force) {
+      try {
+        const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+        if (hasStarted) {
+          await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+        }
+      } catch {
+        // Ignorar error al detener tarea en segundo plano
       }
-    } catch {
-      // Ignorar error al detener tarea en segundo plano
     }
   },
 };

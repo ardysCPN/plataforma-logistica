@@ -1,5 +1,5 @@
-let detectedVersion = '1.0.8';
-let detectedVersionCode = 9;
+let detectedVersion = '1.0.9';
+let detectedVersionCode = 10;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires

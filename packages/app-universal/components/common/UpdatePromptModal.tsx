@@ -35,7 +35,7 @@ export const UpdatePromptModal: React.FC<UpdatePromptModalProps> = ({
   return (
     <UniversalDialog
       visible={visible}
-      onClose={versionInfo.isMandatory ? undefined : handleDismiss}
+      onClose={versionInfo.isMandatory ? () => {} : handleDismiss}
       maxWidth={390}
     >
       <View className="items-center p-2 text-center w-full">

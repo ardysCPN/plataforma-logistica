@@ -23,7 +23,7 @@ function buildNativeLeafletHtml(initial: {
   courierLocation?: { latitude: number; longitude: number; bearing?: number } | null;
   userLocation?: GeoPoint | null;
   nearbyCouriers?: NearbyCourierMarker[];
-  orderMarkers?: OrderRadarMarker[];
+  orderMarkers?: OrderMarker[];
   isSearching?: boolean;
 }) {
   const initialJson = JSON.stringify(initial);
@@ -707,7 +707,7 @@ export const UniversalMap: React.FC<UniversalMapProps> = ({
             if (isMounted) setMapLoaded(true);
           });
 
-          map.on('click', (e) => {
+          map.on('click', (e: any) => {
             if (onMapClick) {
               onMapClick({ latitude: e.lngLat.lat, longitude: e.lngLat.lng });
             }

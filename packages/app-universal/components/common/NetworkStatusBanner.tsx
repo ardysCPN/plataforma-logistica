@@ -24,21 +24,42 @@ export const NetworkStatusBanner: React.FC = () => {
       };
     }
 
-    // 2. Detección en Móvil mediante eventos de Socket.io
+    // 2. Detección en Móvil mediante eventos de Socket.io con debounce antirruido
     const socket = getSocket();
-    const handleConnect = () => setIsOffline(false);
+    let offlineTimer: any = null;
+
+    const handleConnect = () => {
+      if (offlineTimer) {
+        clearTimeout(offlineTimer);
+        offlineTimer = null;
+      }
+      setIsOffline(false);
+    };
+
     const handleDisconnect = (reason: string) => {
       if (reason === 'io server disconnect' || reason === 'transport close' || reason === 'transport error') {
-        setIsOffline(true);
+        if (!offlineTimer) {
+          offlineTimer = setTimeout(() => {
+            setIsOffline(true);
+          }, 3000);
+        }
       }
     };
-    const handleConnectError = () => setIsOffline(true);
+
+    const handleConnectError = () => {
+      if (!offlineTimer) {
+        offlineTimer = setTimeout(() => {
+          setIsOffline(true);
+        }, 3000);
+      }
+    };
 
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('connect_error', handleConnectError);
 
     return () => {
+      if (offlineTimer) clearTimeout(offlineTimer);
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('connect_error', handleConnectError);

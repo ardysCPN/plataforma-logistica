@@ -195,7 +195,12 @@ export default function ClientHomeScreen() {
         if (!isMounted || !res.data?.order) return;
         const o = res.data.order;
         setActiveOrder(o);
-        if (res.data.courier) setAssignedCourier(res.data.courier);
+        if (res.data.courier) {
+          setAssignedCourier(res.data.courier);
+          if (res.data.courier.currentLocation) {
+            setCourierLocation(res.data.courier.currentLocation);
+          }
+        }
         if (res.data.bids) setIncomingBids(res.data.bids);
         if (o.originPoint) {
           setOriginPoint(o.originPoint);
@@ -214,6 +219,27 @@ export default function ClientHomeScreen() {
       isMounted = false;
     };
   }, []);
+
+  // Respaldo de sondeo de posición del conductor cada 5s mientras el viaje esté en curso
+  useEffect(() => {
+    if (!activeOrder?.id) return;
+    const activeStatuses = ['ACCEPTED', 'ARRIVED_AT_ORIGIN', 'PICKED_UP', 'IN_TRANSIT'];
+    if (!activeStatuses.includes(activeOrder.status)) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get<any>('/api/orders/my-active');
+        if (res.data?.courier?.currentLocation) {
+          setCourierLocation(res.data.courier.currentLocation);
+        }
+        if (res.data?.order?.status && res.data.order.status !== activeOrderRef.current?.status) {
+          setActiveOrder(res.data.order);
+        }
+      } catch (_) {}
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [activeOrder?.id, activeOrder?.status]);
 
   const handleSelectActiveOrderFromHistory = async (orderId: string) => {
     try {
@@ -645,6 +671,7 @@ export default function ClientHomeScreen() {
 
   // 8. Compartir viaje con familiares vía WhatsApp (Live Trip Sharing)
   const handleShareLiveTrip = () => {
+    if (!activeOrder) return;
     const origin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://domiapp.adhsolutions.tech';
     const trackUrl = `${origin}/track/${activeOrder.id}`;
     const text = encodeURIComponent(`Hola, sigo en camino con mi servicio. Puedes ver mi ubicación y recorrido en vivo en el mapa aquí: ${trackUrl}`);
@@ -832,7 +859,7 @@ export default function ClientHomeScreen() {
                           avatarUrl: (bid as any).courierAvatarUrl,
                           rating: Number(bid.courierRating) || 5.0,
                           vehicleType: bid.vehicleType,
-                          vehiclePlate: bid.vehiclePlate,
+                          vehiclePlate: bid.vehiclePlate || undefined,
                           vehicleModel: (bid as any).vehicleModel,
                           vehicleColor: (bid as any).vehicleColor,
                         });

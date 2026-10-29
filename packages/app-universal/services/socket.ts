@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { Platform } from 'react-native';
+import { appStorage } from './storage';
 
 const DEFAULT_API_URL = 'https://domiapi.adhsolutions.tech';
 
@@ -20,10 +21,12 @@ let socketInstance: Socket | null = null;
 const joinedOrderRooms = new Set<string>();
 
 export const getSocket = (token?: string | null): Socket => {
+  const activeToken = token || appStorage.getItem('auth_token');
+
   if (!socketInstance) {
     socketInstance = io(getSocketUrl(), {
-      autoConnect: false,
-      auth: token ? { token } : undefined,
+      autoConnect: true,
+      auth: activeToken ? { token: activeToken } : undefined,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -38,8 +41,11 @@ export const getSocket = (token?: string | null): Socket => {
         socketInstance?.emit('order:join', orderId);
       });
     });
-  } else if (token) {
-    socketInstance.auth = { token };
+  } else if (activeToken && (!socketInstance.auth || (socketInstance.auth as any).token !== activeToken)) {
+    socketInstance.auth = { token: activeToken };
+    if (!socketInstance.connected) {
+      socketInstance.connect();
+    }
   }
 
   return socketInstance;

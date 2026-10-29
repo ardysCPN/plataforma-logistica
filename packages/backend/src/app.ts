@@ -48,19 +48,19 @@ app.get('/health', async (_req: Request, res: Response) => {
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'Plataforma Logística API',
-    version: '1.0.8',
+    version: '1.0.9',
     documentation: 'Especificación SDD en /agent.md',
   });
 });
 
 app.get('/api/version', (_req: Request, res: Response) => {
   res.json({
-    latestVersion: '1.0.8',
-    latestVersionCode: 9,
+    latestVersion: '1.0.9',
+    latestVersionCode: 10,
     minRequiredVersion: '1.0.0',
     apkDownloadUrl: 'https://domiapp.adhsolutions.tech/downloads/domy.apk',
-    releaseNotes: 'Mapas nítidos de alta definición sin requerimiento de API Key, plataforma 100% en español colombiano (Mandados, Encomiendas, Transporte), prevención de cierres inesperados por memoria y traducción clara de errores de conexión.',
-    releaseDate: '2026-10-24',
+    releaseNotes: 'Rastreo GPS en segundo plano continuo con pantalla bloqueada, sincronización en tiempo real en mapa del cliente, chat bidireccional instantáneo con indicador de escritura, eliminación de parpadeo en barra superior del conductor y módulo de Mis Calificaciones & Reseñas.',
+    releaseDate: '2026-10-29',
   });
 });
 

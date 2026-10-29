@@ -31,7 +31,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [counterpartTyping, setCounterpartTyping] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -62,7 +64,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     const handleMessage = (msg: ChatMessage) => {
       if (msg.orderId === orderId) {
         if (msg.senderId !== currentUserId) {
-          soundNotification.playPop();
+          soundNotification.playMessageTone();
+          setCounterpartTyping(false);
         }
         setMessages((prev) => {
           // Si ya existe exactamente con el mismo ID de base de datos
@@ -83,17 +86,47 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       }
     };
 
+    const handleTyping = (data: { orderId: string; userId: string; isTyping: boolean }) => {
+      if (data.orderId === orderId && data.userId !== currentUserId) {
+        setCounterpartTyping(Boolean(data.isTyping));
+      }
+    };
+
     socket.on(SOCKET_EVENTS.CHAT_RECEIVE, handleMessage);
+    socket.on(SOCKET_EVENTS.CHAT_TYPING, handleTyping);
 
     return () => {
       socket.off(SOCKET_EVENTS.CHAT_RECEIVE, handleMessage);
-      socket.emit('order:leave', orderId);
+      socket.off(SOCKET_EVENTS.CHAT_TYPING, handleTyping);
+      // No salimos de la sala ('order:leave') para continuar recibiendo notificaciones mientras la orden esté activa
     };
   }, [visible, orderId, currentUserId]);
+
+  const handleTextChange = (val: string) => {
+    setText(val);
+    const socket = getSocket();
+    if (!typingTimeoutRef.current) {
+      socket.emit(SOCKET_EVENTS.CHAT_TYPING, { orderId, isTyping: true });
+    } else {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit(SOCKET_EVENTS.CHAT_TYPING, { orderId, isTyping: false });
+      typingTimeoutRef.current = null;
+    }, 2000);
+  };
 
   const handleSend = async (contentToSend?: string) => {
     const content = contentToSend || text.trim();
     if (!content) return;
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    try {
+      getSocket().emit(SOCKET_EVENTS.CHAT_TYPING, { orderId, isTyping: false });
+    } catch (_) {}
 
     const tempId = `temp_${Date.now()}`;
     const optimisticMsg: ChatMessage = {
@@ -113,13 +146,34 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setLoading(true);
     try {
       const socket = getSocket();
-      socket.emit(SOCKET_EVENTS.CHAT_SEND, {
-        orderId,
-        messageType: 'TEXT',
-        content,
-      });
+      // Enviar por socket
+      if (socket && socket.connected) {
+        socket.emit(SOCKET_EVENTS.CHAT_SEND, {
+          orderId,
+          messageType: 'TEXT',
+          content,
+        });
+      } else {
+        // Fallback HTTP directo cuando el socket no esté conectado
+        const res = await api.post<ChatMessage>('/api/chat', {
+          orderId,
+          messageType: 'TEXT',
+          content,
+        });
+        if (res.data) {
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === tempId);
+            if (idx !== -1) {
+              const updated = [...prev];
+              updated[idx] = res.data;
+              return updated;
+            }
+            return [...prev, res.data];
+          });
+        }
+      }
     } catch (err) {
-      console.warn('Error enviando mensaje:', err);
+      console.warn('Error enviando mensaje por chat:', err);
     } finally {
       setLoading(false);
     }
@@ -211,11 +265,20 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           </ScrollView>
         </View>
 
+        {/* Indicador de escribiendo */}
+        {counterpartTyping && (
+          <View className="px-4 py-2 bg-emerald-50 border-t border-emerald-100 flex-row items-center gap-2">
+            <Text className="text-emerald-700 text-xs font-semibold">
+              ✍️ {counterpartName} está escribiendo...
+            </Text>
+          </View>
+        )}
+
         {/* Campo de Entrada de Texto */}
         <View className="p-3 bg-white border-t border-slate-200 flex-row items-center gap-2">
           <TextInput
             value={text}
-            onChangeText={setText}
+            onChangeText={handleTextChange}
             placeholder="Escribe un mensaje..."
             placeholderTextColor="#94A3B8"
             className="flex-1 bg-slate-100 rounded-xl px-4 py-3 text-slate-900 text-base"

@@ -255,7 +255,9 @@ export const orderService = {
               CASE WHEN so.client_id = $2 THEN so.delivery_pin ELSE NULL END as "deliveryPin",
               so.created_at as "createdAt", so.completed_at as "completedAt",
               cu.full_name as "courierName", cu.phone as "courierPhone", cu.rating_avg as "courierRating",
-              cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate"
+              cp.vehicle_type as "vehicleType", cp.vehicle_plate as "vehiclePlate",
+              ST_Y(cp.current_location::geometry) as "courierLat", ST_X(cp.current_location::geometry) as "courierLng",
+              cp.current_bearing as "courierBearing"
        FROM service_orders so
        LEFT JOIN users cu ON so.courier_id = cu.id
        LEFT JOIN courier_profiles cp ON cu.id = cp.user_id
@@ -292,6 +294,11 @@ export const orderService = {
         ratingAvg: Number(r.courierRating),
         vehicleType: r.vehicleType,
         vehiclePlate: r.vehiclePlate,
+        currentLocation: r.courierLat && r.courierLng ? {
+          latitude: Number(r.courierLat),
+          longitude: Number(r.courierLng),
+          bearing: Number(r.courierBearing || 0),
+        } : null,
       } : null,
     };
   },
@@ -440,7 +447,10 @@ export const orderService = {
                 u_courier.phone as "courierPhone",
                 u_courier.rating_avg as "courierRating",
                 cp.vehicle_type as "vehicleType",
-                cp.vehicle_plate as "vehiclePlate"
+                cp.vehicle_plate as "vehiclePlate",
+                ST_Y(cp.current_location::geometry) as "courierLat",
+                ST_X(cp.current_location::geometry) as "courierLng",
+                cp.current_bearing as "courierBearing"
          FROM service_orders so
          LEFT JOIN users u_courier ON so.courier_id = u_courier.id
          LEFT JOIN courier_profiles cp ON u_courier.id = cp.user_id
@@ -504,6 +514,11 @@ export const orderService = {
           ratingAvg: Number(r.courierRating || 5.0),
           vehicleType: r.vehicleType,
           vehiclePlate: r.vehiclePlate,
+          currentLocation: r.courierLat && r.courierLng ? {
+            latitude: Number(r.courierLat),
+            longitude: Number(r.courierLng),
+            bearing: Number(r.courierBearing || 0),
+          } : null,
         } : null,
         bids,
       };
@@ -756,6 +771,89 @@ export const orderService = {
           bearing: Number(r.courierBearing || 0),
         } : null,
       } : null,
+    };
+  },
+
+  async updateCourierLocation(
+    courierUserId: string,
+    coords: { latitude: number; longitude: number; bearing?: number; speed?: number; activeOrderIds?: string[] }
+  ) {
+    await db.query(
+      `UPDATE courier_profiles
+       SET current_location = ST_SetSRID(ST_MakePoint($1, $2), 4326),
+           current_bearing = $3,
+           last_ping_at = NOW()
+       WHERE user_id = $4`,
+      [coords.longitude, coords.latitude, coords.bearing || 0, courierUserId]
+    );
+
+    const ordersRes = await db.query(
+      `SELECT id, client_id as "clientId"
+       FROM service_orders
+       WHERE courier_id = $1
+         AND status IN ('ACCEPTED', 'ARRIVED_AT_ORIGIN', 'PURCHASING', 'PICKED_UP', 'IN_TRANSIT')`,
+      [courierUserId]
+    );
+
+    const orderIds = new Set<string>(ordersRes.rows.map((r: any) => r.id));
+    if (coords.activeOrderIds && Array.isArray(coords.activeOrderIds)) {
+      coords.activeOrderIds.forEach((id: string) => orderIds.add(id));
+    }
+
+    for (const orderId of orderIds) {
+      const clientRow = ordersRes.rows.find((r: any) => r.id === orderId);
+      socketEvents.emitLocationFeed(
+        orderId,
+        {
+          orderId,
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          bearing: coords.bearing || 0,
+        },
+        clientRow?.clientId
+      );
+    }
+
+    return { success: true, updatedOrdersCount: orderIds.size };
+  },
+
+  async getCourierRatings(courierUserId: string) {
+    const userRes = await db.query(
+      `SELECT rating_avg as "ratingAvg", rating_count as "ratingCount" FROM users WHERE id = $1`,
+      [courierUserId]
+    );
+
+    const ratingsRes = await db.query(
+      `SELECT r.id, r.score, r.feedback_tags as "feedbackTags", r.comment, r.created_at as "createdAt",
+              so.service_type as "serviceType"
+       FROM order_ratings r
+       JOIN service_orders so ON r.order_id = so.id
+       WHERE r.rated_id = $1
+       ORDER BY r.created_at DESC
+       LIMIT 60`,
+      [courierUserId]
+    );
+
+    const breakdown: { [score: number]: number } = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    ratingsRes.rows.forEach((r: any) => {
+      const s = Number(r.score) || 5;
+      if (breakdown[s] !== undefined) {
+        breakdown[s]++;
+      }
+    });
+
+    return {
+      averageRating: Number(userRes.rows[0]?.ratingAvg || 5.0),
+      totalRatings: Number(userRes.rows[0]?.ratingCount || ratingsRes.rows.length),
+      breakdown,
+      ratings: ratingsRes.rows.map((r: any) => ({
+        id: r.id,
+        score: Number(r.score),
+        feedbackTags: r.feedbackTags || [],
+        comment: r.comment || '',
+        serviceType: r.serviceType,
+        createdAt: r.createdAt,
+      })),
     };
   },
 };

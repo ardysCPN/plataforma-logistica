@@ -18,6 +18,8 @@ orderRouter.get('/nearby-couriers', authenticateJWT, orderController.getNearbyCo
 orderRouter.get('/available', authenticateJWT, orderController.getAvailable);
 orderRouter.get('/history', authenticateJWT, orderController.getHistory);
 orderRouter.get('/my-active', authenticateJWT, orderController.getMyActive);
+orderRouter.post('/courier/location', authenticateJWT, requireRole(['COURIER']), orderController.updateCourierLocation);
+orderRouter.get('/courier/ratings', authenticateJWT, requireRole(['COURIER']), orderController.getCourierRatings);
 orderRouter.get('/public-track/:id', orderController.getPublicTrack);
 
 orderRouter.get('/:id', authenticateJWT, orderController.getOrder);

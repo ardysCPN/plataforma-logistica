@@ -170,6 +170,45 @@ export const orderController = {
       res.status(404).json({ error: message });
     }
   },
+
+  async updateCourierLocation(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user || req.user.role !== 'COURIER') {
+        res.status(403).json({ error: 'Solo conductores pueden emitir telemetría de ubicación' });
+        return;
+      }
+      const { latitude, longitude, bearing, speed, activeOrderIds } = req.body;
+      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+        res.status(400).json({ error: 'Coordenadas de latitud y longitud requeridas' });
+        return;
+      }
+      const result = await orderService.updateCourierLocation(req.user.id, {
+        latitude,
+        longitude,
+        bearing,
+        speed,
+        activeOrderIds,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al actualizar ubicación';
+      res.status(500).json({ error: message });
+    }
+  },
+
+  async getCourierRatings(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: 'No autenticado' });
+        return;
+      }
+      const ratingsData = await orderService.getCourierRatings(req.user.id);
+      res.json(ratingsData);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al consultar calificaciones';
+      res.status(500).json({ error: message });
+    }
+  },
 };
 
 
